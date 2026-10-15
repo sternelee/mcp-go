@@ -195,6 +195,38 @@ func waitFor(t *testing.T, what string, check func() bool) {
 	t.Fatalf("timed out waiting for %s", what)
 }
 
+func TestAServerThatAsksForAuthIsRecognizedWithoutOAuthConfigured(t *testing.T) {
+	as := newAuthServer(t)
+	sc := config.ServerConfig{
+		ID: "s1", Name: "Protected", Alias: "protected",
+		Transport: config.TransportHTTP,
+		URL:       as.URL + "/mcp",
+		Enabled:   true,
+		// The configuration never says the server uses OAuth; the server says so
+		// itself, by answering 401.
+	}
+	g := newTestGateway(t, sc)
+	startServing(t, g)
+
+	view, ok := g.Server(sc.ID)
+	if !ok {
+		t.Fatal("the server is missing from the view")
+	}
+	if view.Status != StatusNeedsAuth {
+		t.Fatalf("status is %q, want %q (error %q)", view.Status, StatusNeedsAuth, view.Err)
+	}
+
+	// The sign-in can still be started, so the interface has something to offer
+	// even though the configuration never marked the server as OAuth.
+	authURL, err := g.BeginAuth(context.Background(), sc.ID)
+	if err != nil {
+		t.Fatalf("begin auth: %v", err)
+	}
+	if authURL == "" {
+		t.Fatal("no authorization URL was built")
+	}
+}
+
 func TestBeginAuthRejectsAServerWithoutOAuth(t *testing.T) {
 	sc := config.ServerConfig{
 		ID: "s1", Name: "Filesystem", Alias: "filesystem",

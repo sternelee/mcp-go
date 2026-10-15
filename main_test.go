@@ -614,6 +614,43 @@ func TestForgetTokenClearsTheSavedOne(t *testing.T) {
 	}
 }
 
+func TestADiscoveredNeedsAuthServerOffersConnect(t *testing.T) {
+	// A server configured without the OAuth flag and without a token of its
+	// own: the gateway learns it needs signing in to from a 401, and the
+	// interface still has to offer the button.
+	sc := config.ServerConfig{
+		ID: "s1", Name: "Linear", Alias: "linear",
+		Transport: config.TransportHTTP, URL: "https://mcp.linear.app/mcp",
+		Enabled: true,
+	}
+	a := newTestApp(t, sc)
+	a.status[sc.ID] = gateway.ServerView{Config: sc, Status: gateway.StatusNeedsAuth}
+
+	tt := ui.NewTester(a.view, 1080, 740)
+	if !tt.HasText("Connect") {
+		t.Errorf("a server the gateway found needs auth offers no Connect; texts are %q", tt.Texts())
+	}
+	if err := tt.RightClick(sc.Name); err != nil {
+		t.Fatalf("right-click the row: %v", err)
+	}
+	if menu := strings.Join(tt.Menu(), " "); !strings.Contains(menu, "Connect") {
+		t.Errorf("the menu has no Connect: %q", menu)
+	}
+}
+
+func TestATokenServerIsNotOfferedSignIn(t *testing.T) {
+	// A server given a token of its own is not signed in to; a 401 from it is a
+	// problem with that token, so it must not be offered a sign-in.
+	sc := remoteServer()
+	a := newTestApp(t, sc)
+	a.status[sc.ID] = gateway.ServerView{Config: sc, Status: gateway.StatusNeedsAuth, Err: "authorization required"}
+
+	tt := ui.NewTester(a.view, 1080, 740)
+	if tt.HasText("Connect") {
+		t.Errorf("a token server is offered a sign-in; texts are %q", tt.Texts())
+	}
+}
+
 func TestConnectIsOfferedForAnOAuthServer(t *testing.T) {
 	// A disabled OAuth server has never been connected, so its status is not
 	// "sign in" — the browser authorization has to be reachable anyway.

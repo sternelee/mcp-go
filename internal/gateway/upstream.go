@@ -59,6 +59,10 @@ type connectOptions struct {
 	creds       *config.CredentialStore
 	redirectURI string
 	version     string
+	// forceOAuth builds the client with OAuth even when the configuration does
+	// not ask for it, for a server that has told the gateway it must be signed
+	// in to.
+	forceOAuth bool
 }
 
 // connect starts an upstream and lists its tools.
@@ -74,11 +78,14 @@ func connect(ctx context.Context, sc config.ServerConfig, opts connectOptions) (
 	// Start is idempotent; a stdio transport has already started by now.
 	if err := c.Start(ctx); err != nil {
 		c.Close()
+		if needsAuth(sc, err) {
+			return nil, &NeedsAuthError{ServerID: sc.ID, Err: err}
+		}
 		return nil, withLogs(err, logs)
 	}
 	if _, err := c.Initialize(ctx, initializeRequest(opts.version)); err != nil {
 		c.Close()
-		if client.IsOAuthAuthorizationRequiredError(err) {
+		if needsAuth(sc, err) {
 			return nil, &NeedsAuthError{ServerID: sc.ID, Err: err}
 		}
 		return nil, withLogs(err, logs)
@@ -89,6 +96,17 @@ func connect(ctx context.Context, sc config.ServerConfig, opts connectOptions) (
 		return nil, withLogs(err, logs)
 	}
 	return &Upstream{Config: sc, client: c, tools: result.Tools}, nil
+}
+
+// needsAuth reports whether err means the server wants a sign-in the gateway
+// can carry out. A server that was given a token of its own is not signed in
+// to, so a 401 from it is a problem with that token rather than an OAuth flow
+// waiting to happen.
+func needsAuth(sc config.ServerConfig, err error) bool {
+	if sc.Transport == config.TransportStdio || sc.TokenHeader != "" {
+		return false
+	}
+	return client.IsOAuthAuthorizationRequiredError(err) || client.IsAuthorizationRequiredError(err)
 }
 
 // withLogs adds what the server wrote to stderr, which is where a command says
@@ -110,17 +128,30 @@ func newClient(sc config.ServerConfig, opts connectOptions, logs *LogBuffer) (*c
 		return client.NewStdioMCPClientWithOptions(sc.Command, sc.Env, sc.Args,
 			transport.WithCommandStderrWriter(logs))
 	case config.TransportSSE:
-		if sc.OAuth {
+		if oauthFor(sc, opts) {
 			return client.NewOAuthSSEClient(sc.URL, oauthConfig(sc, opts))
 		}
 		return client.NewSSEMCPClient(sc.URL, transport.WithHeaders(requestHeaders(sc, opts)))
 	case config.TransportHTTP:
-		if sc.OAuth {
+		if oauthFor(sc, opts) {
 			return client.NewOAuthStreamableHttpClient(sc.URL, oauthConfig(sc, opts))
 		}
 		return client.NewStreamableHttpClient(sc.URL, transport.WithHTTPHeaders(requestHeaders(sc, opts)))
 	}
 	return nil, fmt.Errorf("unknown transport %q", sc.Transport)
+}
+
+// oauthFor reports whether a server's client should carry an OAuth handler: the
+// configuration asks for it, the gateway is deliberately starting a sign-in, or
+// a token from an earlier sign-in is stored and is what the server needs.
+func oauthFor(sc config.ServerConfig, opts connectOptions) bool {
+	if sc.Transport == config.TransportStdio {
+		return false
+	}
+	if opts.forceOAuth || sc.OAuth {
+		return true
+	}
+	return opts.creds != nil && sc.TokenHeader == "" && opts.creds.SignedIn(sc.ID)
 }
 
 // requestHeaders are the headers every request to a remote upstream carries:

@@ -39,7 +39,9 @@ func (g *Gateway) BeginAuth(ctx context.Context, serverID string) (string, error
 	if !ok {
 		return "", fmt.Errorf("no such server %q", serverID)
 	}
-	if sc.Transport == config.TransportStdio || !sc.OAuth {
+	if sc.Transport == config.TransportStdio || sc.TokenHeader != "" {
+		// A stdio server runs locally, and one given a token of its own is not
+		// signed in to; neither has an authorization server to visit.
 		return "", fmt.Errorf("%s does not sign in with OAuth", sc.Name)
 	}
 	if !g.Serving() {
@@ -53,10 +55,13 @@ func (g *Gateway) BeginAuth(ctx context.Context, serverID string) (string, error
 
 	// A connection attempt is what makes the server state its authorization
 	// requirements, and hands back the handler already configured for them.
+	// OAuth is forced here, since the discovery that follows is what produces
+	// the handler even for a server the configuration never marked as OAuth.
 	up, err := connect(ctx, sc, connectOptions{
 		creds:       g.creds,
 		redirectURI: g.redirectURI(),
 		version:     g.version,
+		forceOAuth:  true,
 	})
 	if err == nil {
 		// It connected on its own, so there is nothing to sign in to.

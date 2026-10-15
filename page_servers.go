@@ -86,7 +86,7 @@ func (a *app) serverRow(c *ui.Context, i int) {
 		if m.Item("Reconnect").Chosen() {
 			a.reconnect(sc.ID)
 		}
-		if sc.OAuth {
+		if signInOffered(sc, view) {
 			if view.SignedIn {
 				if m.Item("Sign out").Chosen() {
 					a.signOut(sc.ID)
@@ -109,7 +109,7 @@ func (a *app) serverRow(c *ui.Context, i int) {
 		})
 		ui.Badge(c, sc.Transport.Label())
 		ui.Textf(c, "%d tools", view.Tools).FontSize(11).TextColor(t.TextMuted).Width(54).TextAlign(ui.End)
-		if sc.OAuth {
+		if signInOffered(sc, view) {
 			// Authorizing is the one step a switch cannot express, so it keeps a
 			// button. It is offered whatever the connection state, so a server
 			// can be authorized before it is switched on.
@@ -155,6 +155,17 @@ func serverDetail(sc config.ServerConfig, view gateway.ServerView) string {
 		return "Sign in required · " + target
 	}
 	return target
+}
+
+// signInOffered reports whether a server can be signed in to: a remote server
+// that carries no token of its own. It is offered once the server has asked for
+// authorization, and whenever the configuration already expects OAuth, so a
+// server the gateway discovers needs signing in to still gets a button.
+func signInOffered(sc config.ServerConfig, view gateway.ServerView) bool {
+	if sc.Transport == config.TransportStdio || sc.TokenHeader != "" {
+		return false
+	}
+	return sc.OAuth || view.SignedIn || view.Status == gateway.StatusNeedsAuth
 }
 
 // selectedServerID is the ID of the highlighted server, or "".

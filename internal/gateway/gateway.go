@@ -320,7 +320,8 @@ func (g *Gateway) registerMetaTool() {
 func (g *Gateway) RefreshCredentials() {
 	signedIn := map[string]bool{}
 	for _, sc := range g.cfg.Servers {
-		if sc.OAuth {
+		// A remote server with no token of its own is one that signs in.
+		if sc.Transport != config.TransportStdio && sc.TokenHeader == "" {
 			signedIn[sc.ID] = g.creds.SignedIn(sc.ID)
 		}
 	}
