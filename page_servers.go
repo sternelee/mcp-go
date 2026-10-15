@@ -205,7 +205,7 @@ func (a *app) serverRow(c *ui.Context, i, row int) {
 		}
 		if signInOffered(sc, view) {
 			if view.SignedIn {
-				if m.Item("Sign out").Chosen() {
+				if m.Item("Disconnect").Chosen() {
 					a.signOut(sc.ID)
 				}
 			} else if m.Item("Connect").Chosen() {
@@ -242,7 +242,7 @@ func (a *app) serverRow(c *ui.Context, i, row int) {
 			// button. It is offered whatever the connection state, so a server
 			// can be authorized before it is switched on.
 			if view.SignedIn {
-				if ui.Button(c, "Sign out").Clicked() {
+				if ui.Button(c, "Disconnect").Clicked() {
 					a.signOut(sc.ID)
 				}
 			} else if ui.PrimaryButton(c, "Connect").Clicked() {

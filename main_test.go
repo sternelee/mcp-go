@@ -219,7 +219,7 @@ func TestAnOAuthServerMenuOffersConnect(t *testing.T) {
 	}
 }
 
-func TestASignedInOAuthServerOffersSignOut(t *testing.T) {
+func TestASignedInOAuthServerOffersDisconnect(t *testing.T) {
 	sc := config.ServerConfig{
 		ID: "s1", Name: "Remote", Alias: "remote",
 		Transport: config.TransportHTTP, URL: "https://example.com/mcp",
@@ -232,7 +232,7 @@ func TestASignedInOAuthServerOffersSignOut(t *testing.T) {
 	if tt.HasText("Connect") {
 		t.Errorf("a signed-in server still offers Connect; texts are %q", tt.Texts())
 	}
-	if !tt.HasText("Sign out") {
+	if !tt.HasText("Disconnect") {
 		t.Errorf("a signed-in server offers no way to sign out; texts are %q", tt.Texts())
 	}
 }
