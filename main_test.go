@@ -237,6 +237,29 @@ func TestASignedInOAuthServerOffersSignOut(t *testing.T) {
 	}
 }
 
+func TestConnectDoesNotChangeTheSwitch(t *testing.T) {
+	// The two controls are separate: Connect is for authorizing, the switch is
+	// for on and off. Clicking one must not move the other.
+	sc := config.ServerConfig{
+		ID: "s1", Name: "Remote", Alias: "remote",
+		Transport: config.TransportHTTP, URL: "https://example.com/mcp",
+		OAuth: true, Enabled: false,
+	}
+	a := newTestApp(t, sc)
+	tt := ui.NewTester(a.view, 1080, 740)
+
+	if err := tt.Click("Connect"); err != nil {
+		t.Fatalf("click Connect: %v", err)
+	}
+	tt.Frame()
+	if *a.flag(sc.ID, true) {
+		t.Error("clicking Connect flipped the switch; on and off should be the switch's alone")
+	}
+	if stored, _ := a.cfg.Server(sc.ID); stored.Enabled {
+		t.Error("clicking Connect changed the stored setting")
+	}
+}
+
 func TestANeedsAuthServerOffersConnectAndSaysWhy(t *testing.T) {
 	sc := config.ServerConfig{
 		ID: "s1", Name: "Remote", Alias: "remote",
