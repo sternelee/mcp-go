@@ -1,0 +1,68 @@
+package main
+
+import (
+	"context"
+	"log"
+
+	"github.com/egoist/mygo"
+	"github.com/egoist/mygo/ui"
+
+	"mcp-go/internal/config"
+	"mcp-go/internal/gateway"
+)
+
+// version is what the gateway reports to the servers it connects to, and in
+// its own identity.
+const version = "0.1.0"
+
+func main() {
+	cfg, err := config.Load()
+	if err != nil {
+		// A configuration we cannot read should not stop the app: the user
+		// needs the interface to fix it.
+		log.Printf("mcp-go: %v; starting from defaults", err)
+		cfg = config.Default()
+	}
+
+	creds := config.NewCredentialStore()
+	gw := gateway.New(cfg, creds, version)
+	a := newApp(cfg, creds, gw)
+
+	mygo.App.WhenReady(func() {
+		a.win = mygo.NewWindow(mygo.WindowOptions{
+			Title:     "MCP Gateway",
+			Width:     1080,
+			Height:    740,
+			MinWidth:  820,
+			MinHeight: 560,
+			StateKey:  "main",
+			// The window shows the interface MyGo draws, not a web page.
+			Content: ui.View(a.view),
+		})
+		// The gateway redraws the window from its own goroutines.
+		gw.SetOnChange(a.onChange)
+		go a.boot()
+	})
+
+	// Quitting must take the listener and any stdio child processes with it.
+	mygo.App.OnBeforeQuit(func(*mygo.QuitEvent) {
+		_ = gw.Stop(context.Background())
+	})
+
+	if err := mygo.App.Run(); err != nil {
+		log.Fatal(err)
+	}
+}
+
+// boot opens the configured port, which connects the enabled servers with it.
+func (a *app) boot() {
+	a.busy = "Starting the gateway…"
+	err := a.gw.Start(context.Background(), a.cfg.Port)
+	a.post(func() {
+		a.busy = ""
+		a.reload()
+		if err != nil {
+			a.toast(err.Error())
+		}
+	})
+}
