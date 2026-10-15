@@ -118,6 +118,10 @@ type app struct {
 	confirm  bool
 	removeID string
 
+	// openExternal opens a URL in the user's browser. It is a field so a test
+	// can observe what would be opened.
+	openExternal func(string) error
+
 	// How the gateway guards itself, copied out of it on reload.
 	auth      gateway.AuthState
 	authToken string
@@ -132,13 +136,14 @@ type app struct {
 
 func newApp(cfg *config.Config, creds *config.CredentialStore, gw *gateway.Gateway) *app {
 	a := &app{
-		cfg:    cfg,
-		creds:  creds,
-		gw:     gw,
-		router: ui.NewRouter("/servers"),
-		port:   float64(cfg.Port),
-		status: map[string]gateway.ServerView{},
-		flags:  map[string]*bool{},
+		cfg:          cfg,
+		creds:        creds,
+		gw:           gw,
+		router:       ui.NewRouter("/servers"),
+		port:         float64(cfg.Port),
+		status:       map[string]gateway.ServerView{},
+		flags:        map[string]*bool{},
+		openExternal: mygo.Shell.OpenExternal,
 	}
 	a.serversList.Selected = &a.sel
 	a.toolsList.Selected = &a.toolSel

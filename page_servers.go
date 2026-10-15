@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 
 	"mcp-go/internal/config"
@@ -500,8 +499,8 @@ func (a *app) signIn(id string) {
 	a.busy = "Starting sign-in…"
 	go func() {
 		url, err := a.gw.BeginAuth(context.Background(), id)
-		if err == nil && url != "" {
-			err = mygo.Shell.OpenExternal(url)
+		if err == nil {
+			err = a.openAuthURL(url)
 		}
 		a.post(func() {
 			a.busy = ""
@@ -516,6 +515,16 @@ func (a *app) signIn(id string) {
 			}
 		})
 	}()
+}
+
+// openAuthURL sends the user to the authorization URL a sign-in produced. An
+// empty URL means the server turned out to need no sign-in, so there is nothing
+// to open.
+func (a *app) openAuthURL(url string) error {
+	if url == "" {
+		return nil
+	}
+	return a.openExternal(url)
 }
 
 // signOut forgets a server's token.

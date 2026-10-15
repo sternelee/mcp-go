@@ -260,6 +260,31 @@ func TestConnectDoesNotChangeTheSwitch(t *testing.T) {
 	}
 }
 
+func TestOpenAuthURLOpensTheBrowser(t *testing.T) {
+	a := newTestApp(t)
+	var opened []string
+	a.openExternal = func(url string) error {
+		opened = append(opened, url)
+		return nil
+	}
+
+	// A server that needed no sign-in produces no URL, so nothing opens.
+	if err := a.openAuthURL(""); err != nil {
+		t.Fatalf("open an empty URL: %v", err)
+	}
+	if len(opened) != 0 {
+		t.Errorf("an empty URL opened %q", opened)
+	}
+
+	const want = "https://auth.example/authorize?state=abc"
+	if err := a.openAuthURL(want); err != nil {
+		t.Fatalf("open the authorization URL: %v", err)
+	}
+	if len(opened) != 1 || opened[0] != want {
+		t.Errorf("opened %q, want [%q]", opened, want)
+	}
+}
+
 func TestANeedsAuthServerOffersConnectAndSaysWhy(t *testing.T) {
 	sc := config.ServerConfig{
 		ID: "s1", Name: "Remote", Alias: "remote",
