@@ -378,6 +378,65 @@ func TestToolsSelectionFollowsTheList(t *testing.T) {
 	}
 }
 
+func TestFilterIgnoresCase(t *testing.T) {
+	a := newTestApp(t, stdioServer(), secondRemoteServer())
+	a.filter = "FILESYSTEM"
+	tt := ui.NewTester(a.view, 1080, 740)
+	if !tt.HasText("Filesystem") {
+		t.Errorf("the filter is case-sensitive; texts are %q", tt.Texts())
+	}
+	if tt.HasText("Remote") {
+		t.Errorf("a server that does not match is listed; texts are %q", tt.Texts())
+	}
+}
+
+func TestEditingUnderAFilterEditsTheShownServer(t *testing.T) {
+	a := newTestApp(t, stdioServer(), secondRemoteServer())
+	a.filter = "remote"
+	tt := ui.NewTester(a.view, 1080, 740)
+	if err := tt.Click("Edit…"); err != nil {
+		t.Fatalf("click Edit…: %v", err)
+	}
+	if !a.form.editing {
+		t.Fatal("the form did not open")
+	}
+	// The selection is the row index in the filtered list, which is not the
+	// index in the configuration; the form must still edit the shown server.
+	if a.form.name != "Remote" {
+		t.Errorf("the form edits %q, want the filtered server", a.form.name)
+	}
+}
+
+func TestSavingAServerRevealsItUnderTheFilter(t *testing.T) {
+	a := newTestApp(t, stdioServer(), secondRemoteServer())
+	a.filter = "remote"
+	a.addServer()
+	a.form.name = "Filesystem Two"
+	a.form.command = "npx"
+	a.saveForm()
+	if a.form.err != "" {
+		t.Fatalf("save: %s", a.form.err)
+	}
+	sc, ok := a.serverNamed("Filesystem Two")
+	if !ok {
+		t.Fatal("the server was not stored")
+	}
+	if a.filter != "" {
+		t.Errorf("the filter %q would hide the server just saved", a.filter)
+	}
+	if a.sel < 0 || a.cfg.Servers[a.sel].ID != sc.ID {
+		t.Errorf("the selection %d does not name the saved server", a.sel)
+	}
+}
+
+// secondRemoteServer is remoteServer with an ID of its own, so a test can list
+// it beside the stdio server without two rows sharing a key.
+func secondRemoteServer() config.ServerConfig {
+	sc := remoteServer()
+	sc.ID = "s2"
+	return sc
+}
+
 func TestAddingAServerOpensTheForm(t *testing.T) {
 	a := newTestApp(t)
 	tt := ui.NewTester(a.view, 1080, 740)
