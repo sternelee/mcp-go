@@ -227,6 +227,52 @@ func TestAServerThatAsksForAuthIsRecognizedWithoutOAuthConfigured(t *testing.T) 
 	}
 }
 
+func TestSigningOutForgetsTheTokenAndAsksAgain(t *testing.T) {
+	as := newAuthServer(t)
+	sc := config.ServerConfig{
+		ID: "s1", Name: "Protected", Alias: "protected",
+		Transport: config.TransportHTTP,
+		URL:       as.URL + "/mcp",
+		OAuth:     true,
+		Enabled:   true,
+	}
+	g := newTestGateway(t, sc)
+	startServing(t, g)
+
+	// Sign in the way the browser would.
+	authURL, err := g.BeginAuth(context.Background(), sc.ID)
+	if err != nil {
+		t.Fatalf("begin auth: %v", err)
+	}
+	parsed, err := url.Parse(authURL)
+	if err != nil {
+		t.Fatalf("parse the authorization URL: %v", err)
+	}
+	recorder := httptest.NewRecorder()
+	g.handleOAuthCallback(recorder, httptest.NewRequest(http.MethodGet,
+		"/oauth/callback?code=the-code&state="+url.QueryEscape(parsed.Query().Get("state")), nil))
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("the callback answered %d: %s", recorder.Code, recorder.Body.String())
+	}
+	waitFor(t, "the signed-in server to connect", func() bool {
+		view, ok := g.Server(sc.ID)
+		return ok && view.Status == StatusReady
+	})
+
+	// Disconnect, which is what the row's button offers: the saved token goes
+	// and the server asks to be authorized again.
+	if err := g.SignOut(context.Background(), sc.ID); err != nil {
+		t.Fatalf("sign out: %v", err)
+	}
+	if g.creds.SignedIn(sc.ID) {
+		t.Error("the token is still saved after signing out")
+	}
+	waitFor(t, "the server to ask for authorization again", func() bool {
+		view, ok := g.Server(sc.ID)
+		return ok && view.Status == StatusNeedsAuth
+	})
+}
+
 func TestBeginAuthRejectsAServerWithoutOAuth(t *testing.T) {
 	sc := config.ServerConfig{
 		ID: "s1", Name: "Filesystem", Alias: "filesystem",

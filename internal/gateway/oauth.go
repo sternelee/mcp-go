@@ -225,7 +225,14 @@ func (g *Gateway) SignOut(ctx context.Context, serverID string) error {
 	g.markSignedIn(serverID, false)
 	g.note(serverID, g.serverName(serverID)+": signed out", false)
 	g.changed()
-	return g.Reconnect(ctx, serverID)
+	// The server usually answers "authorization required" now, which is what
+	// signing out asks for rather than a failure to report.
+	err := g.Reconnect(ctx, serverID)
+	var needs *NeedsAuthError
+	if errors.As(err, &needs) {
+		return nil
+	}
+	return err
 }
 
 // SetClientCredentials stores a client ID and secret the user entered for a
