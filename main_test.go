@@ -237,6 +237,24 @@ func TestASignedInOAuthServerOffersSignOut(t *testing.T) {
 	}
 }
 
+func TestANeedsAuthServerOffersConnectAndSaysWhy(t *testing.T) {
+	sc := config.ServerConfig{
+		ID: "s1", Name: "Remote", Alias: "remote",
+		Transport: config.TransportHTTP, URL: "https://example.com/mcp",
+		OAuth: true, Enabled: true,
+	}
+	a := newTestApp(t, sc)
+	a.status[sc.ID] = gateway.ServerView{Config: sc, Status: gateway.StatusNeedsAuth}
+
+	tt := ui.NewTester(a.view, 1080, 740)
+	if !tt.HasText("Connect") {
+		t.Errorf("a server that needs authorization offers no way to do it; texts are %q", tt.Texts())
+	}
+	if !tt.HasText("Sign in required · " + sc.URL) {
+		t.Errorf("the row does not say why Connect is needed; texts are %q", tt.Texts())
+	}
+}
+
 func TestAddingAServerOpensTheForm(t *testing.T) {
 	a := newTestApp(t)
 	tt := ui.NewTester(a.view, 1080, 740)
