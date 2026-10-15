@@ -167,6 +167,76 @@ func TestTheSwitchConnectsAndDisconnectsAServer(t *testing.T) {
 	}
 }
 
+func TestTheSwitchConnectsAnOAuthServer(t *testing.T) {
+	// The switch is the same control whatever the transport, so a server that
+	// also authorizes is switched on the same way.
+	sc := config.ServerConfig{
+		ID: "s1", Name: "Remote", Alias: "remote",
+		Transport: config.TransportHTTP, URL: "https://example.com/mcp",
+		OAuth: true, Enabled: false,
+	}
+	a := newTestApp(t, sc)
+	tt := ui.NewTester(a.view, 1080, 740)
+
+	if err := tt.Click(sc.Name + " enabled"); err != nil {
+		t.Fatalf("click the switch: %v", err)
+	}
+	tt.Frame()
+	if stored, _ := a.cfg.Server(sc.ID); !stored.Enabled {
+		t.Error("the switch did not connect the OAuth server")
+	}
+}
+
+func TestAPlainServerMenuOffersNoConnect(t *testing.T) {
+	sc := stdioServer()
+	a := newTestApp(t, sc)
+	tt := ui.NewTester(a.view, 1080, 740)
+	if err := tt.RightClick(sc.Name); err != nil {
+		t.Fatalf("right-click the row: %v", err)
+	}
+	menu := strings.Join(tt.Menu(), " ")
+	if strings.Contains(menu, "Connect") || strings.Contains(menu, "Disconnect") {
+		t.Errorf("a plain server's menu still offers Connect/Disconnect: %q", menu)
+	}
+	if !strings.Contains(menu, "Reconnect") {
+		t.Errorf("the menu has no Reconnect: %q", menu)
+	}
+}
+
+func TestAnOAuthServerMenuOffersConnect(t *testing.T) {
+	sc := config.ServerConfig{
+		ID: "s1", Name: "Remote", Alias: "remote",
+		Transport: config.TransportHTTP, URL: "https://example.com/mcp",
+		OAuth: true, Enabled: true,
+	}
+	a := newTestApp(t, sc)
+	tt := ui.NewTester(a.view, 1080, 740)
+	if err := tt.RightClick(sc.Name); err != nil {
+		t.Fatalf("right-click the row: %v", err)
+	}
+	if menu := strings.Join(tt.Menu(), " "); !strings.Contains(menu, "Connect") {
+		t.Errorf("an un-authorized OAuth server's menu has no Connect: %q", menu)
+	}
+}
+
+func TestASignedInOAuthServerOffersSignOut(t *testing.T) {
+	sc := config.ServerConfig{
+		ID: "s1", Name: "Remote", Alias: "remote",
+		Transport: config.TransportHTTP, URL: "https://example.com/mcp",
+		OAuth: true, Enabled: true,
+	}
+	a := newTestApp(t, sc)
+	a.status[sc.ID] = gateway.ServerView{Config: sc, Status: gateway.StatusReady, SignedIn: true, Tools: 3}
+
+	tt := ui.NewTester(a.view, 1080, 740)
+	if tt.HasText("Connect") {
+		t.Errorf("a signed-in server still offers Connect; texts are %q", tt.Texts())
+	}
+	if !tt.HasText("Sign out") {
+		t.Errorf("a signed-in server offers no way to sign out; texts are %q", tt.Texts())
+	}
+}
+
 func TestAddingAServerOpensTheForm(t *testing.T) {
 	a := newTestApp(t)
 	tt := ui.NewTester(a.view, 1080, 740)
