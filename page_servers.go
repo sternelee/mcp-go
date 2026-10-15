@@ -14,20 +14,22 @@ import (
 // serversPage lists the configured servers and what to do with them.
 func (a *app) serversPage(c *ui.Context) {
 	t := c.Theme()
+	visible := a.visibleServers()
+	a.clampSelection(len(visible))
+	selected := a.selectedIndex(visible)
 	ui.Column(c).Fill().Padding(20).Gap(14).Children(func() {
 		pageHeader(c, "Servers", "Upstream MCP servers whose tools this gateway serves as one.", func() {
 			if a.busy != "" {
 				ui.Spinner(c).Label(a.busy)
 			}
-			selected := a.selectedServerID()
-			if ui.Button(c, "Edit…").Disabled(selected == "").Clicked() {
-				a.editServer(a.sel)
+			if ui.Button(c, "Edit…").Disabled(selected < 0).Clicked() {
+				a.editServer(selected)
 			}
-			if ui.Button(c, "Reconnect").Disabled(selected == "").Clicked() {
-				a.reconnect(selected)
+			if ui.Button(c, "Reconnect").Disabled(selected < 0).Clicked() {
+				a.reconnect(a.cfg.Servers[selected].ID)
 			}
-			if ui.Button(c, "Remove").Disabled(selected == "").Clicked() {
-				a.askRemove(selected)
+			if ui.Button(c, "Remove").Disabled(selected < 0).Clicked() {
+				a.askRemove(a.cfg.Servers[selected].ID)
 			}
 			if ui.Button(c, "Paste JSON…").Clicked() {
 				a.openImport()
@@ -53,32 +55,147 @@ func (a *app) serversPage(c *ui.Context) {
 			return
 		}
 
-		a.serversList.Key = func(i int) any { return a.cfg.Servers[i].ID }
-		a.serversList.Label = func(i int) string { return a.cfg.Servers[i].Name }
-		a.serversList.Selected = &a.sel
-		list := ui.List(c.Key("servers"), &a.serversList, len(a.cfg.Servers), func(i int) {
-			a.serverRow(c, i)
-		}).Grow(1).Border(1, t.Border).Radius(8).Padding(4)
-		// Opening a server is Enter or a double click on its row.
-		if list.Submitted() {
-			a.editServer(a.sel)
+		a.filterRow(c)
+
+		if len(visible) == 0 {
+			emptyState(c, "No servers match",
+				fmt.Sprintf("Nothing matches %q.", strings.TrimSpace(a.filter)),
+				func() {
+					if ui.Button(c, "Clear the filter").Clicked() {
+						a.filter = ""
+					}
+				})
+			return
 		}
 
-		if n := len(a.cfg.Servers); a.sel >= 0 && a.sel < n {
-			ui.Text(c, "Double-click a server to edit it. Its tools are named "+a.cfg.Servers[a.sel].Alias+"__…").
+		a.serversList.Key = func(i int) any { return a.cfg.Servers[visible[i]].ID }
+		a.serversList.Label = func(i int) string { return a.cfg.Servers[visible[i]].Name }
+		a.serversList.Selected = &a.sel
+		list := ui.List(c.Key("servers"), &a.serversList, len(visible), func(i int) {
+			a.serverRow(c, visible[i], i)
+		}).Grow(1).Border(1, t.Border).Radius(8).Padding(4)
+		// Opening a server is Enter or a double click on its row.
+		if list.Submitted() && selected >= 0 {
+			a.editServer(selected)
+		}
+
+		if selected >= 0 {
+			ui.Text(c, "Double-click a server to edit it. Its tools are named "+a.cfg.Servers[selected].Alias+"__…").
 				FontSize(11).TextColor(t.TextMuted)
 		}
 	})
 }
 
-// serverRow draws one server.
-func (a *app) serverRow(c *ui.Context, i int) {
+// filterRow narrows a long list of servers, and says how they are doing.
+func (a *app) filterRow(c *ui.Context) {
+	t := c.Theme()
+	ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
+		ui.TextInput(c.Key("server-filter"), &a.filter).
+			Placeholder("Filter by name, command or URL…").Width(280)
+		if a.filter != "" && ui.Button(c, "Clear").Clicked() {
+			a.filter = ""
+		}
+		ui.Spacer(c)
+		ui.Text(c, a.serversSummary()).FontSize(11).TextColor(t.TextMuted)
+	})
+}
+
+// serversSummary counts the servers by what they are doing, for the row above
+// the list.
+func (a *app) serversSummary() string {
+	var ready, auth, failed, off int
+	for _, sc := range a.cfg.Servers {
+		switch a.status[sc.ID].Status {
+		case gateway.StatusReady:
+			ready++
+		case gateway.StatusNeedsAuth:
+			auth++
+		case gateway.StatusError:
+			failed++
+		default:
+			off++
+		}
+	}
+	parts := []string{fmt.Sprintf("%d ready", ready)}
+	if auth > 0 {
+		parts = append(parts, fmt.Sprintf("%d need sign-in", auth))
+	}
+	if failed > 0 {
+		parts = append(parts, fmt.Sprintf("%d failed", failed))
+	}
+	if off > 0 {
+		parts = append(parts, fmt.Sprintf("%d off", off))
+	}
+	return strings.Join(parts, " · ")
+}
+
+// visibleServers returns the indices of the configured servers the filter
+// keeps, in order. With an empty filter it is every server.
+func (a *app) visibleServers() []int {
+	query := strings.ToLower(strings.TrimSpace(a.filter))
+	idx := make([]int, 0, len(a.cfg.Servers))
+	for i, sc := range a.cfg.Servers {
+		if query == "" || serverMatches(sc, query) {
+			idx = append(idx, i)
+		}
+	}
+	return idx
+}
+
+// serverMatches reports whether a server matches a lower-cased query, by its
+// name, alias, transport, command or URL.
+func serverMatches(sc config.ServerConfig, query string) bool {
+	for _, field := range []string{sc.Name, sc.Alias, sc.Transport.Label(), sc.Command, sc.URL} {
+		if strings.Contains(strings.ToLower(field), query) {
+			return true
+		}
+	}
+	return false
+}
+
+// clampSelection keeps the servers selection inside the visible list, so a
+// filter or a removal never leaves it pointing at a row that is gone.
+func (a *app) clampSelection(n int) {
+	switch {
+	case n == 0:
+		a.sel = -1
+	case a.sel < 0:
+		a.sel = 0
+	case a.sel >= n:
+		a.sel = n - 1
+	}
+}
+
+// selectedIndex returns the configured-server index the selection names, or -1.
+func (a *app) selectedIndex(visible []int) int {
+	if a.sel < 0 || a.sel >= len(visible) {
+		return -1
+	}
+	return visible[a.sel]
+}
+
+// revealServer clears the filter and selects a server, so one that was just
+// added or edited is the row in view.
+func (a *app) revealServer(id string) {
+	a.filter = ""
+	for i, sc := range a.cfg.Servers {
+		if sc.ID == id {
+			a.sel = i
+			return
+		}
+	}
+	a.sel = -1
+}
+
+// serverRow draws one server. i is its index in the configuration, row its
+// index in the list the filter leaves.
+func (a *app) serverRow(c *ui.Context, i, row int) {
 	sc := a.cfg.Servers[i]
 	view := a.status[sc.ID]
 	t := c.Theme()
 
-	row := ui.Row(c).Height(46).PaddingX(12).Gap(12).AlignItems(ui.Center)
-	row.ContextMenu(func(m *ui.Menu) {
+	line := ui.Row(c).Height(46).PaddingX(12).Gap(12).AlignItems(ui.Center)
+	line.ContextMenu(func(m *ui.Menu) {
 		if m.Item("Edit…").Chosen() {
 			a.editServer(i)
 		}
@@ -101,14 +218,25 @@ func (a *app) serverRow(c *ui.Context, i int) {
 		}
 	})
 
-	row.Children(func() {
+	line.Children(func() {
+		// The list paints a chosen row in the accent color, so its secondary
+		// text and badge have to be drawn for a dark background rather than the
+		// theme's ordinary muted gray.
+		selected := row == a.sel
+		muted := t.TextMuted
+		if selected {
+			muted = t.AccentText.Alpha(0.82)
+		}
 		ui.Text(c, "●").FontSize(13).TextColor(statusColor(t, view.Status))
 		ui.Column(c).Grow(1).MinWidth(0).Gap(1).Children(func() {
 			ui.Text(c, sc.Name).SingleLine()
-			ui.Text(c, serverDetail(sc, view)).FontSize(11).TextColor(t.TextMuted).SingleLine()
+			ui.Text(c, serverDetail(sc, view)).FontSize(11).TextColor(muted).SingleLine()
 		})
-		ui.Badge(c, sc.Transport.Label())
-		ui.Textf(c, "%d tools", view.Tools).FontSize(11).TextColor(t.TextMuted).Width(54).TextAlign(ui.End)
+		badge := ui.Badge(c, sc.Transport.Label())
+		if selected {
+			badge.Background(t.AccentText.Alpha(0.22)).TextColor(t.AccentText)
+		}
+		ui.Textf(c, "%d tools", view.Tools).FontSize(11).TextColor(muted).Width(54).TextAlign(ui.End)
 		if signInOffered(sc, view) {
 			// Authorizing is the one step a switch cannot express, so it keeps a
 			// button. It is offered whatever the connection state, so a server
@@ -166,14 +294,6 @@ func signInOffered(sc config.ServerConfig, view gateway.ServerView) bool {
 		return false
 	}
 	return sc.OAuth || view.SignedIn || view.Status == gateway.StatusNeedsAuth
-}
-
-// selectedServerID is the ID of the highlighted server, or "".
-func (a *app) selectedServerID() string {
-	if a.sel < 0 || a.sel >= len(a.cfg.Servers) {
-		return ""
-	}
-	return a.cfg.Servers[a.sel].ID
 }
 
 // addServer opens the form for a new server.
@@ -398,9 +518,7 @@ func (a *app) saveForm() {
 
 	*a.flag(sc.ID, sc.Enabled) = sc.Enabled
 	f.editing = false
-	if f.isNew {
-		a.sel = len(a.cfg.Servers) - 1
-	}
+	a.revealServer(sc.ID)
 	a.toast(sc.Name + " saved")
 	a.sync()
 }
@@ -450,9 +568,6 @@ func (a *app) removeServer(id string) {
 	}
 	if err := a.gw.SetUpstreamToken(id, ""); err != nil {
 		a.toast("Could not forget the token: " + err.Error())
-	}
-	if a.sel >= len(a.cfg.Servers) {
-		a.sel = len(a.cfg.Servers) - 1
 	}
 	if enabled {
 		a.sync()

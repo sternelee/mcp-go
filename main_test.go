@@ -303,6 +303,81 @@ func TestANeedsAuthServerOffersConnectAndSaysWhy(t *testing.T) {
 	}
 }
 
+func TestFilterNarrowsTheServersList(t *testing.T) {
+	a := newTestApp(t, stdioServer(), remoteServer())
+	a.filter = "remote"
+	tt := ui.NewTester(a.view, 1080, 740)
+	if !tt.HasText("Remote") {
+		t.Errorf("the matching server is gone; texts are %q", tt.Texts())
+	}
+	if tt.HasText("Filesystem") {
+		t.Errorf("a server that does not match is still listed; texts are %q", tt.Texts())
+	}
+}
+
+func TestFilterMatchesTheCommandToo(t *testing.T) {
+	a := newTestApp(t, stdioServer(), remoteServer())
+	a.filter = "npx"
+	tt := ui.NewTester(a.view, 1080, 740)
+	if !tt.HasText("Filesystem") {
+		t.Errorf("filtering by the command lost the stdio server; texts are %q", tt.Texts())
+	}
+	if tt.HasText("Remote") {
+		t.Errorf("a server that does not match the command is listed; texts are %q", tt.Texts())
+	}
+}
+
+func TestFilterWithNoMatchOffersToClear(t *testing.T) {
+	a := newTestApp(t, stdioServer())
+	a.filter = "nothing matches this"
+	tt := ui.NewTester(a.view, 1080, 740)
+	if !tt.HasText("No servers match") {
+		t.Fatalf("the empty filter state is missing; texts are %q", tt.Texts())
+	}
+	if err := tt.Click("Clear the filter"); err != nil {
+		t.Fatalf("click Clear: %v", err)
+	}
+	tt.Frame()
+	if a.filter != "" {
+		t.Errorf("the filter is still %q", a.filter)
+	}
+}
+
+func TestFilterKeepsTheSelectionInRange(t *testing.T) {
+	a := newTestApp(t, stdioServer(), remoteServer())
+	a.sel = 1
+	a.filter = "filesystem" // only the first server survives
+	_ = ui.NewTester(a.view, 1080, 740)
+	if a.sel != 0 {
+		t.Errorf("the selection is %d, want it pulled back to the only row", a.sel)
+	}
+	if got := a.selectedIndex(a.visibleServers()); got != 0 {
+		t.Errorf("the selection names server %d, want 0", got)
+	}
+}
+
+func TestToolsSelectionFollowsTheList(t *testing.T) {
+	a := newTestApp(t)
+
+	a.tools = nil
+	a.clampToolSelection()
+	if a.toolSel != -1 {
+		t.Errorf("with no tools the selection is %d, want -1", a.toolSel)
+	}
+
+	a.tools = []gateway.ToolView{{Name: "a__x"}}
+	a.clampToolSelection()
+	if a.toolSel != 0 {
+		t.Errorf("the first tool should be selected, got %d", a.toolSel)
+	}
+
+	a.toolSel = 9
+	a.clampToolSelection()
+	if a.toolSel != 0 {
+		t.Errorf("an out-of-range selection should come back to 0, got %d", a.toolSel)
+	}
+}
+
 func TestAddingAServerOpensTheForm(t *testing.T) {
 	a := newTestApp(t)
 	tt := ui.NewTester(a.view, 1080, 740)

@@ -40,7 +40,7 @@ func (a *app) toolsPage(c *ui.Context) {
 			ui.Column(c).Grow(3).MinWidth(0).Children(func() {
 				a.toolTable(c)
 			})
-			ui.Column(c).Width(420).Shrink(0).Children(func() {
+			ui.Column(c).Width(380).Shrink(0).Children(func() {
 				a.toolDetail(c)
 			})
 		})
@@ -51,8 +51,8 @@ func (a *app) toolsPage(c *ui.Context) {
 func (a *app) toolTable(c *ui.Context) {
 	t := c.Theme()
 	columns := []ui.TableColumn{
-		{Title: "Tool"},
-		{Title: "Server", Width: 150},
+		{Title: "Tool", Width: 200},
+		{Title: "Server", Width: 110},
 		{Title: "Description"},
 	}
 	a.toolsList.Key = func(i int) any { return a.tools[i].Name }
@@ -61,13 +61,19 @@ func (a *app) toolTable(c *ui.Context) {
 
 	ui.Table(c.Key("tools"), &a.toolsList, columns, len(a.tools), func(row, col int) {
 		tool := a.tools[row]
+		// The chosen row is painted in the accent color, so its secondary
+		// columns have to be drawn for a dark background.
+		muted := t.TextMuted
+		if row == a.toolSel {
+			muted = t.AccentText.Alpha(0.82)
+		}
 		switch col {
 		case 0:
 			ui.Text(c, tool.Name).SingleLine()
 		case 1:
-			ui.Text(c, tool.ServerName).SingleLine().TextColor(t.TextMuted)
+			ui.Text(c, tool.ServerName).SingleLine().TextColor(muted)
 		default:
-			ui.Text(c, tool.Description).SingleLine().TextColor(t.TextMuted)
+			ui.Text(c, tool.Description).SingleLine().TextColor(muted)
 		}
 	}).Grow(1).Border(1, t.Border).Radius(8)
 }
@@ -87,6 +93,9 @@ func (a *app) toolDetail(c *ui.Context) {
 		ui.Text(c, tool.Name).FontSize(14).Bold().SingleLine()
 		ui.Text(c, fmt.Sprintf("%s · %s at %s", tool.ServerName, tool.Upstream, a.transportWord(tool.ServerID))).
 			FontSize(11).TextColor(t.TextMuted).SingleLine()
+		if desc := strings.TrimSpace(tool.Description); desc != "" {
+			ui.Text(c, desc).FontSize(12).TextColor(t.TextMuted)
+		}
 		ui.Row(c).Gap(8).Children(func() {
 			if ui.Button(c, "Copy name").Clicked() {
 				mygo.Clipboard.WriteText(tool.Name)
@@ -101,7 +110,7 @@ func (a *app) toolDetail(c *ui.Context) {
 		ui.Divider(c)
 
 		ui.Text(c, "Input schema").FontSize(12).Bold()
-		ui.Scroll(c).Grow(1).MinHeight(120).Children(func() {
+		ui.Scroll(c).MinHeight(80).MaxHeight(220).Children(func() {
 			ui.Column(c).Padding(8).Children(func() {
 				ui.Text(c, orPlaceholder(tool.Schema, "No parameters.")).
 					Font("monospace").FontSize(11).TextColor(t.TextMuted)

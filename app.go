@@ -113,6 +113,7 @@ type app struct {
 	port     float64
 	busy     string
 	pending  string // a toast waiting for the next frame
+	filter   string // narrows the servers list
 	form     serverForm
 	imp      importForm
 	confirm  bool
@@ -191,8 +192,17 @@ func (a *app) reload() {
 	a.auth = a.gw.AuthState()
 	a.authToken = a.gw.AuthToken()
 	a.authMode = inboundIndex(a.auth.Mode)
-	if a.toolSel >= len(a.tools) {
-		a.toolSel = len(a.tools) - 1
+	a.clampToolSelection()
+}
+
+// clampToolSelection keeps the tools selection on a row while there is one, so
+// the detail pane is never an empty column when there is something to show.
+func (a *app) clampToolSelection() {
+	switch {
+	case len(a.tools) == 0:
+		a.toolSel = -1
+	case a.toolSel < 0 || a.toolSel >= len(a.tools):
+		a.toolSel = 0
 	}
 }
 
