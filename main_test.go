@@ -219,6 +219,28 @@ func TestAnOAuthServerMenuOffersConnect(t *testing.T) {
 	}
 }
 
+func TestASignedInOAuthServerMenuOffersDisconnect(t *testing.T) {
+	sc := config.ServerConfig{
+		ID: "s1", Name: "Remote", Alias: "remote",
+		Transport: config.TransportHTTP, URL: "https://example.com/mcp",
+		OAuth: true, Enabled: true,
+	}
+	a := newTestApp(t, sc)
+	a.status[sc.ID] = gateway.ServerView{Config: sc, Status: gateway.StatusReady, SignedIn: true, Tools: 3}
+
+	tt := ui.NewTester(a.view, 1080, 740)
+	if err := tt.RightClick(sc.Name); err != nil {
+		t.Fatalf("right-click the row: %v", err)
+	}
+	menu := strings.Join(tt.Menu(), " ")
+	if !strings.Contains(menu, "Disconnect") {
+		t.Errorf("a signed-in server's menu has no Disconnect: %q", menu)
+	}
+	if strings.Contains(menu, "Connect") {
+		t.Errorf("a signed-in server's menu still offers Connect: %q", menu)
+	}
+}
+
 func TestASignedInOAuthServerOffersDisconnect(t *testing.T) {
 	sc := config.ServerConfig{
 		ID: "s1", Name: "Remote", Alias: "remote",
