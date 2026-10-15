@@ -241,6 +241,36 @@ func TestASignedInOAuthServerMenuOffersDisconnect(t *testing.T) {
 	}
 }
 
+func TestSignInOfferedDecision(t *testing.T) {
+	remote := func(id string) config.ServerConfig {
+		return config.ServerConfig{ID: id, Name: id, Alias: id, Transport: config.TransportHTTP, URL: "https://example.com/mcp"}
+	}
+	oauth := remote("oauth")
+	oauth.OAuth = true
+	token := remote("token")
+	token.TokenHeader = "Authorization"
+	plain := remote("plain")
+
+	cases := []struct {
+		what string
+		sc   config.ServerConfig
+		view gateway.ServerView
+		want bool
+	}{
+		{"a stdio server", stdioServer(), gateway.ServerView{Status: gateway.StatusNeedsAuth}, false},
+		{"a token server", token, gateway.ServerView{Status: gateway.StatusNeedsAuth}, false},
+		{"a configured OAuth server", oauth, gateway.ServerView{Status: gateway.StatusDisabled}, true},
+		{"a server found to need auth", plain, gateway.ServerView{Status: gateway.StatusNeedsAuth}, true},
+		{"a signed-in server", plain, gateway.ServerView{Status: gateway.StatusReady, SignedIn: true}, true},
+		{"a plain connected server", plain, gateway.ServerView{Status: gateway.StatusReady}, false},
+	}
+	for _, tc := range cases {
+		if got := signInOffered(tc.sc, tc.view); got != tc.want {
+			t.Errorf("%s: signInOffered = %v, want %v", tc.what, got, tc.want)
+		}
+	}
+}
+
 func TestASignedInOAuthServerOffersDisconnect(t *testing.T) {
 	sc := config.ServerConfig{
 		ID: "s1", Name: "Remote", Alias: "remote",
