@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -1448,5 +1449,36 @@ func TestTheLiveIndicatorTakesItsColor(t *testing.T) {
 				t.Errorf("the stopped indicator is not plain (hue %d)", hue)
 			}
 		}
+	}
+}
+
+func TestThePageTooltipNamesItsShortcut(t *testing.T) {
+	a := newTestApp(t)
+	tt := ui.NewTester(a.view, 1080, 740)
+
+	// Find matches the sidebar item, whose whole text is the page's name.
+	rect, ok := tt.Find("Tools")
+	if !ok {
+		t.Fatalf("no Tools item; texts are %q", tt.Texts())
+	}
+	tt.Move(rect.X+rect.W/2, rect.Y+rect.H/2)
+	// A tooltip shows once the pointer has rested on the element.
+	time.Sleep(700 * time.Millisecond)
+	tt.Frame()
+
+	want := "Tools (" + pageShortcutLabel(3) + ")"
+	if !tt.HasText(want) {
+		t.Errorf("the shortcut %q is not shown; texts are %q", want, tt.Texts())
+	}
+}
+
+func TestTheShortcutLabelFollowsThePlatform(t *testing.T) {
+	got := pageShortcutLabel(0)
+	want := "Ctrl+1"
+	if runtime.GOOS == "darwin" {
+		want = "⌘1"
+	}
+	if got != want {
+		t.Errorf("the first page's shortcut reads %q, want %q", got, want)
 	}
 }

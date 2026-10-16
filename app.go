@@ -3,7 +3,9 @@ package main
 import (
 	"context"
 	"fmt"
+	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/egoist/mygo"
@@ -70,6 +72,16 @@ var pages = []pageDef{
 
 // pageKeys go to the pages above, in order: Cmd+1 is Servers, and so on.
 var pageKeys = []ui.Key{ui.Key1, ui.Key2, ui.Key3, ui.Key4, ui.Key5}
+
+// pageShortcutLabel spells a page shortcut the way the platform writes it, so
+// the hint beside a page's name matches the key the user would press.
+func pageShortcutLabel(i int) string {
+	modifier := "Ctrl+"
+	if runtime.GOOS == "darwin" {
+		modifier = "⌘"
+	}
+	return modifier + strconv.Itoa(i+1)
+}
 
 // inboundModes are the ways the gateway can guard itself, in the order the
 // interface shows them.
@@ -354,8 +366,13 @@ func (a *app) sidebar(c *ui.Context) {
 			})
 		})
 		if ui.Sidebar(c, &page, func() {
-			for _, p := range pages {
-				ui.SidebarItem(c, p.path, p.icon, p.title)
+			for i, p := range pages {
+				// The shortcut is what the visible name does not say, so it goes
+				// in the tooltip, which also describes the item to screen readers.
+				item := ui.SidebarItem(c, p.path, p.icon, p.title)
+				if i < len(pageKeys) {
+					item.Tooltip(p.title + " (" + pageShortcutLabel(i) + ")")
+				}
 			}
 		}).Grow(1).Label("Pages").Changed() {
 			a.router.Push(page)
