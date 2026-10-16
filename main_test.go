@@ -1,6 +1,8 @@
 package main
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
@@ -10,6 +12,7 @@ import (
 
 	"mcp-go/internal/config"
 	"mcp-go/internal/gateway"
+	"mcp-go/internal/registry"
 )
 
 // TestMain keeps the tests' configuration out of the real user directory.
@@ -956,5 +959,111 @@ func TestFormatPairsRoundTrips(t *testing.T) {
 	headers := map[string]string{"X-Trace": "1", "Authorization": "Bearer abc"}
 	if got := parsePairs(formatPairs(headers)); len(got) != 2 {
 		t.Errorf("round trip lost an entry: %q", got)
+	}
+}
+
+// registryStub answers searches with one installable server.
+func registryStub(t *testing.T) *httptest.Server {
+	t.Helper()
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+  "servers": [
+    {"server": {
+      "name": "io.github.example/filesystem",
+      "description": "Read and write files.",
+      "version": "0.1.5",
+      "packages": [{
+        "registryType": "npm",
+        "identifier": "@example/fs-mcp",
+        "runtimeHint": "npx",
+        "runtimeArguments": [{"value": "-y", "type": "positional"}],
+        "environmentVariables": [{"name": "ROOT", "isRequired": true}]
+      }]
+    }, "_meta": {"io.modelcontextprotocol.registry/official": {"isLatest": true}}}
+  ],
+  "metadata": {"count": 1}
+}`))
+	}))
+	t.Cleanup(ts.Close)
+	return ts
+}
+
+// openMarket points the app at a registry stub and shows the Market page. The
+// first showing searches it, synchronously, there being no window.
+func openMarket(t *testing.T, a *app, ts *httptest.Server) *ui.Tester {
+	t.Helper()
+	a.reg = &registry.Client{BaseURL: ts.URL}
+	a.router.Push("/market")
+	return ui.NewTester(a.view, 1080, 740)
+}
+
+func TestMarketPageListsWhatTheRegistryFound(t *testing.T) {
+	a := newTestApp(t)
+	tt := openMarket(t, a, registryStub(t))
+
+	for _, want := range []string{"filesystem", "Read and write files.", "npx", "v0.1.5"} {
+		if !tt.HasText(want) {
+			t.Errorf("%q is missing; texts are %q", want, tt.Texts())
+		}
+	}
+	if tt.HasText("The registry could not be reached") {
+		t.Errorf("the search failed; texts are %q", tt.Texts())
+	}
+}
+
+func TestMarketAddOpensAFilledInForm(t *testing.T) {
+	a := newTestApp(t)
+	tt := openMarket(t, a, registryStub(t))
+
+	tt.Click("Add filesystem")
+
+	if !a.form.editing {
+		t.Fatal("no form opened")
+	}
+	if a.form.name != "filesystem" {
+		t.Errorf("the name is %q", a.form.name)
+	}
+	if a.form.command != "npx" {
+		t.Errorf("the command is %q", a.form.command)
+	}
+	if a.form.args != "-y\n@example/fs-mcp" {
+		t.Errorf("the arguments are %q", a.form.args)
+	}
+	if a.form.env != "ROOT=" {
+		t.Errorf("the environment is %q", a.form.env)
+	}
+	// The form is there to be reviewed before anything is saved.
+	tt = ui.NewTester(a.view, 1080, 740)
+	if !tt.HasText("Add a server") {
+		t.Errorf("the form is not shown; texts are %q", tt.Texts())
+	}
+	if len(a.cfg.Servers) != 0 {
+		t.Error("nothing should be saved before the form is")
+	}
+}
+
+func TestMarketMarksAnInstalledServer(t *testing.T) {
+	sc := stdioServer()
+	sc.Args = []string{"-y", "@example/fs-mcp"}
+	a := newTestApp(t, sc)
+	tt := openMarket(t, a, registryStub(t))
+
+	if !tt.HasText("Added") {
+		t.Errorf("an installed server is not marked; texts are %q", tt.Texts())
+	}
+}
+
+func TestMarketReportsARegistryFailure(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadGateway)
+	}))
+	defer ts.Close()
+
+	a := newTestApp(t)
+	tt := openMarket(t, a, ts)
+
+	if !tt.HasText("The registry could not be reached") {
+		t.Errorf("the failure is not shown; texts are %q", tt.Texts())
 	}
 }

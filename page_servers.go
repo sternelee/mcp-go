@@ -55,7 +55,7 @@ func (a *app) serversPage(c *ui.Context) {
 			return
 		}
 
-		a.filterRow(c)
+		a.toolbarRow(c)
 
 		if len(visible) == 0 {
 			emptyState(c, "No servers match",
@@ -68,12 +68,17 @@ func (a *app) serversPage(c *ui.Context) {
 			return
 		}
 
+		if a.serverView == 1 {
+			a.serversGridView(c, visible)
+			return
+		}
+
 		a.serversList.Key = func(i int) any { return a.cfg.Servers[visible[i]].ID }
 		a.serversList.Label = func(i int) string { return a.cfg.Servers[visible[i]].Name }
 		a.serversList.Selected = &a.sel
 		list := ui.List(c.Key("servers"), &a.serversList, len(visible), func(i int) {
 			a.serverRow(c, visible[i], i)
-		}).Grow(1).Border(1, t.Border).Radius(8).Padding(4)
+		}).Grow(1).Border(1, t.Border).Radius(10).Padding(4)
 		// Opening a server is Enter or a double click on its row.
 		if list.Submitted() && selected >= 0 {
 			a.editServer(selected)
@@ -86,17 +91,30 @@ func (a *app) serversPage(c *ui.Context) {
 	})
 }
 
-// filterRow narrows a long list of servers, and says how they are doing.
-func (a *app) filterRow(c *ui.Context) {
+// serversGridView shows the servers as cards, the same content as the rows
+// laid out for scanning rather than reading.
+func (a *app) serversGridView(c *ui.Context, visible []int) {
+	a.serversGrid.Key = func(i int) any { return a.cfg.Servers[visible[i]].ID }
+	a.serversGrid.Label = func(i int) string { return a.cfg.Servers[visible[i]].Name }
+	a.serversGrid.Selected = &a.sel
+	grid := ui.GridView(c.Key("servers-grid"), &a.serversGrid, len(visible), 280, 128, func(i int) {
+		a.serverCard(c, visible[i], i)
+	}).Grow(1)
+	if selected := a.selectedIndex(visible); grid.Submitted() && selected >= 0 {
+		a.editServer(selected)
+	}
+}
+
+// toolbarRow narrows a long list of servers, says how they are doing, and
+// switches between the list and the cards.
+func (a *app) toolbarRow(c *ui.Context) {
 	t := c.Theme()
 	ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
-		ui.TextInput(c.Key("server-filter"), &a.filter).
-			Placeholder("Filter by name, command or URL…").Width(280)
-		if a.filter != "" && ui.Button(c, "Clear").Clicked() {
-			a.filter = ""
-		}
+		ui.SearchField(c.Key("server-filter"), &a.filter).
+			Placeholder("Filter by name, command or URL…").Label("Filter servers").Width(280)
 		ui.Spacer(c)
 		ui.Text(c, a.serversSummary()).FontSize(11).TextColor(t.TextMuted)
+		ui.Segmented(c, &a.serverView, "List", "Grid").Label("Servers view")
 	})
 }
 
@@ -194,28 +212,9 @@ func (a *app) serverRow(c *ui.Context, i, row int) {
 	view := a.status[sc.ID]
 	t := c.Theme()
 
-	line := ui.Row(c).Height(46).PaddingX(12).Gap(12).AlignItems(ui.Center)
+	line := ui.Row(c).Height(56).PaddingX(12).Gap(12).AlignItems(ui.Center)
 	line.ContextMenu(func(m *ui.Menu) {
-		if m.Item("Edit…").Chosen() {
-			a.editServer(i)
-		}
-		m.Separator()
-		if m.Item("Reconnect").Chosen() {
-			a.reconnect(sc.ID)
-		}
-		if signInOffered(sc, view) {
-			if view.SignedIn {
-				if m.Item("Disconnect").Chosen() {
-					a.signOut(sc.ID)
-				}
-			} else if m.Item("Connect").Chosen() {
-				a.signIn(sc.ID)
-			}
-		}
-		m.Separator()
-		if m.Item("Remove").Chosen() {
-			a.askRemove(sc.ID)
-		}
+		a.serverMenu(m, sc, i, view)
 	})
 
 	line.Children(func() {
@@ -227,11 +226,12 @@ func (a *app) serverRow(c *ui.Context, i, row int) {
 		if selected {
 			muted = t.AccentText.Alpha(0.82)
 		}
-		ui.Text(c, "●").FontSize(13).TextColor(statusColor(t, view.Status))
+		ui.Avatar(c, sc.Name, nil).FontSize(15)
 		ui.Column(c).Grow(1).MinWidth(0).Gap(1).Children(func() {
 			ui.Text(c, sc.Name).SingleLine()
 			ui.Text(c, serverDetail(sc, view)).FontSize(11).TextColor(muted).SingleLine()
 		})
+		statusPill(c, view.Status, selected)
 		badge := ui.Badge(c, sc.Transport.Label())
 		if selected {
 			badge.Background(t.AccentText.Alpha(0.22)).TextColor(t.AccentText)
@@ -252,16 +252,90 @@ func (a *app) serverRow(c *ui.Context, i, row int) {
 		// The switch is the server's on/off state: turning it on connects the
 		// server, and turning it off disconnects it and keeps it off at launch.
 		ui.Row(c).Width(64).Justify(ui.End).Children(func() {
-			on := a.flag(sc.ID, sc.Enabled)
-			if ui.Switch(c, on).Label(sc.Name + " enabled").Changed() {
-				if *on {
-					a.connect(sc.ID)
-				} else {
-					a.disconnect(sc.ID)
-				}
-			}
+			a.serverSwitch(c, sc)
 		})
 	})
+}
+
+// serverCard draws one server for the grid: the row's content reflowed into a
+// card. i is its index in the configuration, item its place in the grid.
+func (a *app) serverCard(c *ui.Context, i, item int) {
+	sc := a.cfg.Servers[i]
+	view := a.status[sc.ID]
+	t := c.Theme()
+
+	border := t.Border
+	if item == a.sel {
+		border = t.Accent
+	}
+	box := ui.Column(c).Fill().Padding(14).Gap(8).Radius(12).Background(t.Background).Border(1, border)
+	box.ContextMenu(func(m *ui.Menu) {
+		a.serverMenu(m, sc, i, view)
+	})
+
+	box.Children(func() {
+		ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
+			ui.Avatar(c, sc.Name, nil).FontSize(15)
+			ui.Column(c).Grow(1).MinWidth(0).Gap(1).Children(func() {
+				ui.Text(c, sc.Name).SingleLine().Bold()
+				statusPill(c, view.Status, false)
+			})
+			ui.Badge(c, sc.Transport.Label())
+		})
+		ui.Text(c, serverDetail(sc, view)).FontSize(11).TextColor(t.TextMuted).SingleLine()
+		ui.Spacer(c)
+		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+			ui.Textf(c, "%d tools", view.Tools).FontSize(11).TextColor(t.TextMuted)
+			ui.Spacer(c)
+			if signInOffered(sc, view) {
+				if view.SignedIn {
+					if ui.Button(c, "Disconnect").Clicked() {
+						a.signOut(sc.ID)
+					}
+				} else if ui.PrimaryButton(c, "Connect").Clicked() {
+					a.signIn(sc.ID)
+				}
+			}
+			a.serverSwitch(c, sc)
+		})
+	})
+}
+
+// serverMenu is the right-click menu of a server's row or card.
+func (a *app) serverMenu(m *ui.Menu, sc config.ServerConfig, i int, view gateway.ServerView) {
+	if m.Item("Edit…").Chosen() {
+		a.editServer(i)
+	}
+	m.Separator()
+	if m.Item("Reconnect").Chosen() {
+		a.reconnect(sc.ID)
+	}
+	if signInOffered(sc, view) {
+		if view.SignedIn {
+			if m.Item("Disconnect").Chosen() {
+				a.signOut(sc.ID)
+			}
+		} else if m.Item("Connect").Chosen() {
+			a.signIn(sc.ID)
+		}
+	}
+	m.Separator()
+	if m.Item("Remove").Chosen() {
+		a.askRemove(sc.ID)
+	}
+}
+
+// serverSwitch is a server's on/off switch: turning it on connects the server,
+// and turning it off disconnects it and keeps it off at launch.
+func (a *app) serverSwitch(c *ui.Context, sc config.ServerConfig) {
+	on := a.flag(sc.ID, sc.Enabled)
+	if ui.Switch(c, on).Label(sc.Name + " enabled").Changed() {
+		if *on {
+			a.connect(sc.ID)
+		} else {
+			a.disconnect(sc.ID)
+		}
+	}
 }
 
 // serverDetail is the line under a server's name: what it is, and how it is

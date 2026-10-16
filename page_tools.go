@@ -17,6 +17,16 @@ const toolCallTimeout = 60 * time.Second
 
 // toolsPage shows every aggregated tool, its schema and a way to try it.
 func (a *app) toolsPage(c *ui.Context) {
+	t := c.Theme()
+	visible := a.visibleTools()
+	// The selection is a place in the filtered list, so it is kept on a row
+	// the filter leaves behind.
+	switch {
+	case len(visible) == 0:
+		a.toolSel = -1
+	case a.toolSel < 0 || a.toolSel >= len(visible):
+		a.toolSel = 0
+	}
 	ui.Column(c).Fill().Padding(20).Gap(14).Children(func() {
 		pageHeader(c, "Tools", "What clients of the gateway see, named after the server each tool comes from.",
 			func() {
@@ -36,31 +46,73 @@ func (a *app) toolsPage(c *ui.Context) {
 			return
 		}
 
+		ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
+			ui.SearchField(c.Key("tool-filter"), &a.toolFilter).
+				Placeholder("Filter by tool or server…").Label("Filter tools").Width(280)
+			ui.Spacer(c)
+			ui.Text(c, a.toolsSummary(visible)).FontSize(11).TextColor(t.TextMuted)
+		})
+
+		if len(visible) == 0 {
+			emptyState(c, "No tools match",
+				fmt.Sprintf("Nothing matches %q.", strings.TrimSpace(a.toolFilter)),
+				func() {
+					if ui.Button(c, "Clear the filter").Clicked() {
+						a.toolFilter = ""
+					}
+				})
+			return
+		}
+
 		ui.Row(c).Grow(1).Gap(14).AlignItems(ui.Stretch).Children(func() {
 			ui.Column(c).Grow(3).MinWidth(0).Children(func() {
-				a.toolTable(c)
+				a.toolTable(c, visible)
 			})
 			ui.Column(c).Width(380).Shrink(0).Children(func() {
-				a.toolDetail(c)
+				a.toolDetail(c, visible)
 			})
 		})
 	})
 }
 
-// toolTable is the list of aggregated tools.
-func (a *app) toolTable(c *ui.Context) {
+// visibleTools returns the indices of the tools the filter keeps, in order.
+// With an empty filter it is every tool.
+func (a *app) visibleTools() []int {
+	query := strings.ToLower(strings.TrimSpace(a.toolFilter))
+	idx := make([]int, 0, len(a.tools))
+	for i, tool := range a.tools {
+		if query == "" ||
+			strings.Contains(strings.ToLower(tool.Name), query) ||
+			strings.Contains(strings.ToLower(tool.ServerName), query) ||
+			strings.Contains(strings.ToLower(tool.Description), query) {
+			idx = append(idx, i)
+		}
+	}
+	return idx
+}
+
+// toolsSummary counts the tools the filter leaves, for the row above the list.
+func (a *app) toolsSummary(visible []int) string {
+	if strings.TrimSpace(a.toolFilter) == "" {
+		return fmt.Sprintf("%d tools", len(a.tools))
+	}
+	return fmt.Sprintf("%d of %d tools shown", len(visible), len(a.tools))
+}
+
+// toolTable is the list of aggregated tools the filter leaves.
+func (a *app) toolTable(c *ui.Context, visible []int) {
 	t := c.Theme()
 	columns := []ui.TableColumn{
 		{Title: "Tool", Width: 200},
 		{Title: "Server", Width: 110},
 		{Title: "Description"},
 	}
-	a.toolsList.Key = func(i int) any { return a.tools[i].Name }
-	a.toolsList.Label = func(i int) string { return a.tools[i].Name }
+	a.toolsList.Key = func(i int) any { return a.tools[visible[i]].Name }
+	a.toolsList.Label = func(i int) string { return a.tools[visible[i]].Name }
 	a.toolsList.Selected = &a.toolSel
 
-	ui.Table(c.Key("tools"), &a.toolsList, columns, len(a.tools), func(row, col int) {
-		tool := a.tools[row]
+	ui.Table(c.Key("tools"), &a.toolsList, columns, len(visible), func(row, col int) {
+		tool := a.tools[visible[row]]
 		// The chosen row is painted in the accent color, so its secondary
 		// columns have to be drawn for a dark background.
 		muted := t.TextMuted
@@ -79,17 +131,17 @@ func (a *app) toolTable(c *ui.Context) {
 }
 
 // toolDetail shows the selected tool's schema and lets the user call it.
-func (a *app) toolDetail(c *ui.Context) {
+func (a *app) toolDetail(c *ui.Context, visible []int) {
 	t := c.Theme()
-	if a.toolSel < 0 || a.toolSel >= len(a.tools) {
-		ui.Column(c).Fill().Center().Children(func() {
+	if a.toolSel < 0 || a.toolSel >= len(visible) {
+		ui.Column(c).Fill().Center().Radius(12).Background(t.Background).Border(1, t.Border).Children(func() {
 			ui.Text(c, "Select a tool").TextColor(t.TextMuted)
 		})
 		return
 	}
-	tool := a.tools[a.toolSel]
+	tool := a.tools[visible[a.toolSel]]
 
-	ui.Column(c).Fill().Gap(8).Children(func() {
+	ui.Column(c).Fill().Padding(16).Gap(8).Radius(12).Background(t.Background).Border(1, t.Border).Children(func() {
 		ui.Text(c, tool.Name).FontSize(14).Bold().SingleLine()
 		ui.Text(c, fmt.Sprintf("%s · %s at %s", tool.ServerName, tool.Upstream, a.transportWord(tool.ServerID))).
 			FontSize(11).TextColor(t.TextMuted).SingleLine()

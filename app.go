@@ -11,6 +11,7 @@ import (
 
 	"mcp-go/internal/config"
 	"mcp-go/internal/gateway"
+	"mcp-go/internal/registry"
 )
 
 // serverForm is the add/edit dialog's state.
@@ -108,16 +109,24 @@ type app struct {
 	// for the process, so an edit is never lost to a rebuilt slice.
 	flags map[string]*bool
 
-	sel      int
-	toolSel  int
-	port     float64
-	busy     string
-	pending  string // a toast waiting for the next frame
-	filter   string // narrows the servers list
-	form     serverForm
-	imp      importForm
-	confirm  bool
-	removeID string
+	sel         int
+	toolSel     int
+	port        float64
+	busy        string
+	pending     string // a toast waiting for the next frame
+	filter      string // narrows the servers list
+	serverView  int    // 0 lists the servers, 1 shows them as cards
+	toolFilter  string // narrows the tools table
+	form        serverForm
+	imp         importForm
+	confirm     bool
+	removeID    string
+	serversGrid ui.GridState
+
+	// reg searches the official MCP registry; a field so a test can point it
+	// at a stub. market is the Market page's state.
+	reg    *registry.Client
+	market marketState
 
 	// openExternal opens a URL in the user's browser. It is a field so a test
 	// can observe what would be opened.
@@ -145,6 +154,7 @@ func newApp(cfg *config.Config, creds *config.CredentialStore, gw *gateway.Gatew
 		status:       map[string]gateway.ServerView{},
 		flags:        map[string]*bool{},
 		openExternal: mygo.Shell.OpenExternal,
+		reg:          registry.New(),
 	}
 	a.serversList.Selected = &a.sel
 	a.toolsList.Selected = &a.toolSel
@@ -262,6 +272,8 @@ func (a *app) view(c *ui.Context) {
 		ui.Column(c).Grow(1).MinWidth(0).Children(func() {
 			a.router.View(c, func(r *ui.Route) {
 				switch {
+				case r.Match("/market"):
+					a.marketPage(c)
 				case r.Match("/tools"):
 					a.toolsPage(c)
 				case r.Match("/settings"):
@@ -282,16 +294,29 @@ func (a *app) view(c *ui.Context) {
 func (a *app) sidebar(c *ui.Context) {
 	t := c.Theme()
 	page := a.router.Path()
-	ui.Column(c).Width(200).PaddingY(16).Background(t.Surface).Shrink(0).Children(func() {
-		ui.Text(c, "MCP Gateway").FontSize(13).Bold().TextColor(t.TextMuted).Padding(4, 20, 10)
+	ui.Column(c).Width(216).Background(t.Surface).Shrink(0).Children(func() {
+		ui.Row(c).Padding(18, 16, 14).Gap(10).AlignItems(ui.Center).Children(func() {
+			ui.Column(c).Width(30).Height(30).Center().Radius(8).Background(t.Accent).Children(func() {
+				ui.Icon(c, iconZap).FontSize(15).TextColor(t.AccentText)
+			})
+			ui.Column(c).Gap(1).Children(func() {
+				ui.Text(c, "MCP Gateway").FontSize(13).Bold()
+				ui.Text(c, "v"+version).FontSize(10).TextColor(t.TextMuted)
+			})
+		})
 		if ui.Sidebar(c, &page, func() {
-			ui.SidebarItem(c, "/servers", nil, "Servers")
-			ui.SidebarItem(c, "/tools", nil, "Tools")
-			ui.SidebarItem(c, "/settings", nil, "Settings")
+			ui.SidebarItem(c, "/servers", iconServers, "Servers")
+			ui.SidebarItem(c, "/market", iconStore, "Market")
+			ui.SidebarItem(c, "/tools", iconTools, "Tools")
+			ui.SidebarItem(c, "/settings", iconSliders, "Settings")
 		}).Grow(1).Label("Pages").Changed() {
 			a.router.Push(page)
 		}
-		ui.Text(c, a.summary()).FontSize(11).TextColor(t.TextMuted).Padding(0, 20, 4)
+		ui.Divider(c)
+		ui.Row(c).Padding(10, 20, 12).Gap(8).AlignItems(ui.Center).Children(func() {
+			livePill(c, a.gw.Serving(), "serving", "stopped")
+			ui.Text(c, a.summary()).FontSize(11).TextColor(t.TextMuted).Grow(1)
+		})
 	})
 }
 

@@ -34,7 +34,7 @@ func (a *app) settingsPage(c *ui.Context) {
 // callersCard decides how callers of the gateway prove who they are.
 func (a *app) callersCard(c *ui.Context) {
 	t := c.Theme()
-	card(c, "Callers", func() {
+	card(c, iconShield, "Callers", func() {
 		ui.Segmented(c, &a.authMode, "Off", "Token", "Token + OAuth").OnChange(func() {
 			a.setAuthMode(a.authMode)
 		})
@@ -143,9 +143,8 @@ func (a *app) rotateAuthToken() {
 
 // serveCard starts and stops the gateway, and chooses its port.
 func (a *app) serveCard(c *ui.Context) {
-	t := c.Theme()
 	serving := a.gw.Serving()
-	card(c, "Gateway", func() {
+	card(c, iconZap, "Gateway", func() {
 		ui.Row(c).Gap(12).AlignItems(ui.End).Children(func() {
 			ui.Field(c, "Port", func() {
 				ui.NumberInput(c, &a.port, 1, 65535, 1).Width(120)
@@ -158,16 +157,13 @@ func (a *app) serveCard(c *ui.Context) {
 
 			ui.Spacer(c)
 
+			livePill(c, serving, "serving", "stopped")
 			if serving {
-				ui.Badge(c, "serving").Background(t.Success).TextColor(t.InverseText)
 				if ui.Button(c, "Stop").Clicked() {
 					a.stop()
 				}
-			} else {
-				ui.Badge(c, "stopped").Background(t.SurfaceHover).TextColor(t.TextMuted)
-				if ui.PrimaryButton(c, "Start").Clicked() {
-					a.start()
-				}
+			} else if ui.PrimaryButton(c, "Start").Clicked() {
+				a.start()
 			}
 		})
 	})
@@ -176,7 +172,7 @@ func (a *app) serveCard(c *ui.Context) {
 // endpointsCard lists what the gateway serves and how to paste it elsewhere.
 func (a *app) endpointsCard(c *ui.Context) {
 	t := c.Theme()
-	card(c, "Endpoints", func() {
+	card(c, iconGlobe, "Endpoints", func() {
 		for _, endpoint := range a.gw.Endpoints() {
 			endpoint := endpoint
 			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
@@ -233,7 +229,7 @@ func (a *app) serverLine() string {
 // activityCard shows what the gateway has done recently, newest first.
 func (a *app) activityCard(c *ui.Context) {
 	t := c.Theme()
-	card(c, "Activity", func() {
+	card(c, iconActivity, "Activity", func() {
 		if len(a.events) == 0 {
 			ui.Text(c, "Nothing yet.").FontSize(12).TextColor(t.TextMuted)
 			return
@@ -254,16 +250,6 @@ func (a *app) activityCard(c *ui.Context) {
 				ui.Text(c, event.Text).FontSize(12).TextColor(color).Grow(1)
 			})
 		}
-	})
-}
-
-// card lays out a titled section.
-func card(c *ui.Context, title string, body func()) {
-	t := c.Theme()
-	ui.Column(c).Padding(18).Gap(12).Radius(10).Background(t.Background).
-		Border(1, t.Border).Children(func() {
-		ui.Text(c, title).FontSize(15).Bold()
-		body()
 	})
 }
 
