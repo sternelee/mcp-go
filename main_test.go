@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"image"
 	"net/http"
 	"net/http/httptest"
@@ -1315,5 +1316,83 @@ func TestALiftedCardStaysWithinTheWindow(t *testing.T) {
 	}
 	if after.X < 0 || after.Y < 0 || after.X+after.W > width || after.Y+after.H > height {
 		t.Errorf("the lifted card falls outside the window %dx%d: %+v", width, height, after)
+	}
+}
+
+// pixAt reads a pixel's red, green and blue, or -1 when out of the frame.
+func pixAt(img *image.RGBA, x, y int) [3]int {
+	if img == nil || x < 0 || y < 0 || x >= img.Bounds().Dx() || y >= img.Bounds().Dy() {
+		return [3]int{-1, -1, -1}
+	}
+	i := y*img.Stride + x*4
+	return [3]int{int(img.Pix[i]), int(img.Pix[i+1]), int(img.Pix[i+2])}
+}
+
+func TestAShadowedPanelCastsAShadow(t *testing.T) {
+	view := func(c *ui.Context) {
+		th := c.Theme()
+		ui.Column(c).Fill().Background(th.Background).Padding(40).Children(func() {
+			surfaceShadow(ui.Column(c).Width(200).Height(80).Radius(12).
+				Background(th.Background).Border(1, th.Border))
+		})
+	}
+	tt := ui.NewTester(view, 400, 300)
+	tt.Frame()
+
+	// Just under the panel the shadow darkens the page; well below it the page
+	// is plain, so the near pixel must be darker than the far one.
+	boxBottom := 40 + 80
+	near := pixAt(tt.Image(), 100, boxBottom+1)
+	far := pixAt(tt.Image(), 100, boxBottom+60)
+	if near[0] < 0 || far[0] < 0 {
+		t.Fatalf("the probes fell outside the frame: near %v far %v", near, far)
+	}
+	if near[0] >= far[0] {
+		t.Errorf("the panel casts no shadow: near %v, far %v", near, far)
+	}
+}
+
+func registryEntriesStub(t *testing.T, bodies ...string) *httptest.Server {
+	t.Helper()
+	var n int
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		body := bodies[len(bodies)-1]
+		if n < len(bodies) {
+			body = bodies[n]
+		}
+		n++
+		_, _ = w.Write([]byte(body))
+	}))
+	t.Cleanup(ts.Close)
+	return ts
+}
+
+// entryJSON is one registry entry the parser accepts: every version is listed,
+// and only _meta's isLatest is of interest.
+func entryJSON(name, version string) string {
+	return fmt.Sprintf(`{"server":{"name":%q,"description":"D %s","version":%q},`+
+		`"_meta":{"io.modelcontextprotocol.registry/official":{"isLatest":true}}}`, name, name, version)
+}
+
+func TestMarketReplacesThePreviousResults(t *testing.T) {
+	ts := registryEntriesStub(t,
+		`{"servers":[`+entryJSON("a/alpha", "1")+`]}`,
+		`{"servers":[`+entryJSON("b/beta", "2")+`]}`,
+	)
+	a := newTestApp(t)
+	tt := openMarket(t, a, ts)
+	if !tt.HasText("alpha") {
+		t.Fatalf("the first search is not shown; texts are %q", tt.Texts())
+	}
+
+	a.market.query = "beta"
+	a.marketSearch(false)
+	tt.Frame()
+	if tt.HasText("alpha") {
+		t.Errorf("the previous search is still shown; texts are %q", tt.Texts())
+	}
+	if !tt.HasText("beta") {
+		t.Errorf("the new search is not shown; texts are %q", tt.Texts())
 	}
 }
