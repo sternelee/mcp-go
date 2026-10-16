@@ -1548,3 +1548,91 @@ func TestTheInterfaceHoldsUnderDesktopPreferences(t *testing.T) {
 		})
 	}
 }
+
+// luma is a colour's brightness, 0 for black and 1 for white.
+func luma(c ui.Color) float64 {
+	return 0.299*float64(c.R)/255 + 0.587*float64(c.G)/255 + 0.114*float64(c.B)/255
+}
+
+// dotColor reads the colour of a status pill's dot: the darkest pixel between
+// the row's left edge and the word beside it.
+func dotColor(img *image.RGBA, word ui.Rect) ui.Color {
+	best, found := ui.Color{}, false
+	for x := max(int(word.X)-24, 0); x < max(int(word.X)-2, 0); x++ {
+		for y := max(int(word.Y), 0); y <= int(word.Y+word.H); y++ {
+			p := pixAt(img, x, y)
+			if p[0] < 0 {
+				continue
+			}
+			c := ui.RGB(uint8(p[0]), uint8(p[1]), uint8(p[2]))
+			if !found || luma(c) < luma(best) {
+				best, found = c, true
+			}
+		}
+	}
+	return best
+}
+
+func nearColor(a, b ui.Color, tol int) bool {
+	d := func(x, y uint8) int {
+		if x > y {
+			return int(x) - int(y)
+		}
+		return int(y) - int(x)
+	}
+	return d(a.R, b.R) <= tol && d(a.G, b.G) <= tol && d(a.B, b.B) <= tol
+}
+
+// TestEveryServerStatePaintsItsOwnColor reads the painted dot of each state and
+// compares it with the theme's own color for that state, so the mapping is
+// checked end to end rather than inferred from one green and one red.
+func TestEveryServerStatePaintsItsOwnColor(t *testing.T) {
+	var theme ui.Theme
+	ui.NewTester(func(c *ui.Context) {
+		theme = *c.Theme()
+		ui.Column(c).Fill()
+	}, 100, 100)
+
+	cases := []struct {
+		status gateway.Status
+		word   string
+		want   ui.Color
+	}{
+		{gateway.StatusReady, "ready", theme.Success},
+		{gateway.StatusError, "error", theme.Danger},
+		{gateway.StatusNeedsAuth, "sign in", theme.Accent},
+		{gateway.StatusConnecting, "connecting", theme.Warning},
+		{gateway.StatusDisabled, "off", theme.TextMuted},
+	}
+	seen := map[string]ui.Color{}
+	for _, tc := range cases {
+		sc := stdioServer()
+		a := newTestApp(t, sc)
+		// A card's status is never accent-painted, so its color is the state's.
+		a.serverView = 1
+		a.status[sc.ID] = gateway.ServerView{Config: sc, Status: tc.status, Err: "e"}
+		tt := ui.NewTester(a.view, 1080, 740)
+		tt.Frame()
+
+		r, ok := tt.Find(tc.word)
+		if !ok {
+			t.Fatalf("%s: no %q; texts are %q", tc.status, tc.word, tt.Texts())
+		}
+		got := dotColor(tt.Image(), r)
+		if !nearColor(got, tc.want, 8) {
+			t.Errorf("%s: the dot is %v, want the theme's %v", tc.status, got, tc.want)
+		}
+		seen[tc.word] = got
+	}
+	// No two states may look alike.
+	for _, tc := range cases {
+		for _, other := range cases {
+			if tc.word >= other.word {
+				continue
+			}
+			if nearColor(seen[tc.word], seen[other.word], 8) {
+				t.Errorf("%q and %q are painted alike: %v and %v", tc.word, other.word, seen[tc.word], seen[other.word])
+			}
+		}
+	}
+}
