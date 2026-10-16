@@ -1396,3 +1396,57 @@ func TestMarketReplacesThePreviousResults(t *testing.T) {
 		t.Errorf("the new search is not shown; texts are %q", tt.Texts())
 	}
 }
+
+func TestARemovedServerLeavesTheList(t *testing.T) {
+	one := stdioServer()
+	two := one
+	two.ID, two.Name, two.Alias = "s2", "Second", "second"
+	a := newTestApp(t, one, two)
+	tt := ui.NewTester(a.view, 1080, 740)
+	// Find matches a whole text, so the row's own name is what is looked for.
+	if _, ok := tt.Find("Second"); !ok {
+		t.Fatalf("the second server is not listed; texts are %q", tt.Texts())
+	}
+
+	// Removing it takes its row out of the list as well as the configuration.
+	a.removeServer(two.ID)
+	tt.Frame()
+	if _, ok := tt.Find("Second"); ok {
+		t.Errorf("the removed server is still listed; texts are %q", tt.Texts())
+	}
+}
+
+func TestTheLiveIndicatorTakesItsColor(t *testing.T) {
+	for _, tc := range []struct {
+		on   bool
+		word string
+		want string // "green" or "gray"
+	}{
+		{true, "serving", "green"},
+		{false, "stopped", "gray"},
+	} {
+		tc := tc
+		view := func(c *ui.Context) {
+			ui.Column(c).Fill().Padding(10).Children(func() {
+				livePill(c, tc.on, "serving", "stopped")
+			})
+		}
+		tt := ui.NewTester(view, 240, 60)
+		tt.Frame()
+		rect, ok := tt.Find(tc.word)
+		if !ok {
+			t.Fatalf("%q is not shown", tc.word)
+		}
+		hue := textHue(tt.Image(), rect)
+		switch tc.want {
+		case "green":
+			if hue >= 0 {
+				t.Errorf("the serving indicator is not green (hue %d)", hue)
+			}
+		case "gray":
+			if hue != 0 {
+				t.Errorf("the stopped indicator is not plain (hue %d)", hue)
+			}
+		}
+	}
+}
