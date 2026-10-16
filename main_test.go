@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"image"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -1178,7 +1179,51 @@ func TestTheStatusWordSurvivesItsColorChange(t *testing.T) {
 	}
 }
 
-func TestGridCardStaysInPlaceUnderThePointer(t *testing.T) {
+// imageDiffInRect counts the pixels that differ between two rendered frames,
+// within r. It verifies motion that only paints, such as AnimatePose, which
+// leaves the layout alone and so cannot be seen in an element's bounds.
+func imageDiffInRect(before, after *image.RGBA, r ui.Rect) int {
+	if before == nil || after == nil {
+		return -1
+	}
+	b := before.Bounds()
+	diff := 0
+	for y := int(r.Y) - 12; y < int(r.Y+r.H)+12; y++ {
+		for x := int(r.X) - 12; x < int(r.X+r.W)+12; x++ {
+			if x < 0 || y < 0 || x >= b.Dx() || y >= b.Dy() {
+				continue
+			}
+			i := y*before.Stride + x*4
+			if before.Pix[i] != after.Pix[i] || before.Pix[i+1] != after.Pix[i+1] || before.Pix[i+2] != after.Pix[i+2] {
+				diff++
+			}
+		}
+	}
+	return diff
+}
+
+func TestAHoveredCardActuallyMoves(t *testing.T) {
+	sc := stdioServer()
+	a := newTestApp(t, sc)
+	a.serverView = 1
+	tt := ui.NewTester(a.view, 1080, 740)
+	tt.Frame()
+	before := tt.Image()
+
+	rect, ok := tt.Find(sc.Name)
+	if !ok {
+		t.Fatalf("the card is not drawn; texts are %q", tt.Texts())
+	}
+	// Hovering the card lifts it. The lift is a pose, which only paints, so the
+	// proof is the pixels around the card changing.
+	tt.Move(rect.X+rect.W/2, rect.Y+rect.H/2)
+	tt.Frame()
+	if diff := imageDiffInRect(before, tt.Image(), rect); diff <= 0 {
+		t.Errorf("the hovered card painted identically (diff %d); the lift did not happen", diff)
+	}
+}
+
+func TestALiftedCardStaysWithinTheWindow(t *testing.T) {
 	sc := stdioServer()
 	a := newTestApp(t, sc)
 	a.serverView = 1
