@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
@@ -1179,47 +1180,117 @@ func TestTheStatusWordSurvivesItsColorChange(t *testing.T) {
 	}
 }
 
-// imageDiffInRect counts the pixels that differ between two rendered frames,
-// within r. It verifies motion that only paints, such as AnimatePose, which
-// leaves the layout alone and so cannot be seen in an element's bounds.
-func imageDiffInRect(before, after *image.RGBA, r ui.Rect) int {
-	if before == nil || after == nil {
+// topAccentY finds the topmost strongly blue pixel in a band: for a selected
+// grid card, its accent border. A pose moves the border, which the layout does
+// not, so the border's top is where a lifted card can be seen moving.
+func topAccentY(img *image.RGBA, x0, x1, y0, y1 int) int {
+	if img == nil {
 		return -1
 	}
-	b := before.Bounds()
-	diff := 0
-	for y := int(r.Y) - 12; y < int(r.Y+r.H)+12; y++ {
-		for x := int(r.X) - 12; x < int(r.X+r.W)+12; x++ {
-			if x < 0 || y < 0 || x >= b.Dx() || y >= b.Dy() {
-				continue
-			}
-			i := y*before.Stride + x*4
-			if before.Pix[i] != after.Pix[i] || before.Pix[i+1] != after.Pix[i+1] || before.Pix[i+2] != after.Pix[i+2] {
-				diff++
+	b := img.Bounds()
+	x0, y0 = max(x0, 0), max(y0, 0)
+	x1, y1 = min(x1, b.Dx()), min(y1, b.Dy())
+	for y := y0; y < y1; y++ {
+		for x := x0; x < x1; x++ {
+			i := y*img.Stride + x*4
+			r, g, bl := int(img.Pix[i]), int(img.Pix[i+1]), int(img.Pix[i+2])
+			if bl > r+50 && bl > g+30 {
+				return y
 			}
 		}
 	}
-	return diff
+	return -1
 }
 
-func TestAHoveredCardActuallyMoves(t *testing.T) {
+// textHue counts how red or green the pixels of a box are, to check that a
+// state's color is painted. It is positive when redder, negative when greener,
+// zero when neither.
+func textHue(img *image.RGBA, r ui.Rect) int {
+	if img == nil {
+		return 0
+	}
+	b := img.Bounds()
+	red, green := 0, 0
+	for y := max(int(r.Y)-2, 0); y <= min(int(r.Y+r.H)+2, b.Dy()-1); y++ {
+		for x := max(int(r.X)-2, 0); x <= min(int(r.X+r.W)+2, b.Dx()-1); x++ {
+			i := y*img.Stride + x*4
+			rr, gg, bb := int(img.Pix[i]), int(img.Pix[i+1]), int(img.Pix[i+2])
+			if rr > gg+30 && rr > bb+30 {
+				red++
+			}
+			if gg > rr+30 && gg > bb+30 {
+				green++
+			}
+		}
+	}
+	switch {
+	case red == 0 && green == 0:
+		return 0
+	case red >= green:
+		return red
+	default:
+		return -green
+	}
+}
+
+// waitForAnimation waits out an animation's target. The tester draws frames as fast as it
+// can, so without real time passing a value stays near where it started; the
+// sleep lets the frame that follows land on the target.
+func waitForAnimation() { time.Sleep(320 * time.Millisecond) }
+
+func TestAStatusPillPaintsTheStatesColor(t *testing.T) {
+	sc := stdioServer()
+	a := newTestApp(t, sc)
+	// A grid card's status is never accent-painted, so its color is the state's.
+	a.serverView = 1
+	a.status[sc.ID] = gateway.ServerView{Config: sc, Status: gateway.StatusReady, Tools: 1}
+	tt := ui.NewTester(a.view, 1080, 740)
+	tt.Frame()
+	ready, ok := tt.Find("ready")
+	if !ok {
+		t.Fatalf("no ready status; texts are %q", tt.Texts())
+	}
+	if hue := textHue(tt.Image(), ready); hue >= 0 {
+		t.Errorf("the ready status is not green (hue %d)", hue)
+	}
+
+	a.status[sc.ID] = gateway.ServerView{Config: sc, Status: gateway.StatusError, Err: "boom"}
+	tt.Frame()
+	waitForAnimation()
+	tt.Frame()
+	errRect, ok := tt.Find("error")
+	if !ok {
+		t.Fatalf("no error status; texts are %q", tt.Texts())
+	}
+	if hue := textHue(tt.Image(), errRect); hue <= 0 {
+		t.Errorf("the error status is not red (hue %d)", hue)
+	}
+}
+
+func TestAHoveredCardLifts(t *testing.T) {
 	sc := stdioServer()
 	a := newTestApp(t, sc)
 	a.serverView = 1
 	tt := ui.NewTester(a.view, 1080, 740)
 	tt.Frame()
-	before := tt.Image()
 
 	rect, ok := tt.Find(sc.Name)
 	if !ok {
 		t.Fatalf("the card is not drawn; texts are %q", tt.Texts())
 	}
-	// Hovering the card lifts it. The lift is a pose, which only paints, so the
-	// proof is the pixels around the card changing.
+	x0, x1 := int(rect.X)-30, int(rect.X+rect.W)+30
+	y0, y1 := int(rect.Y)-40, int(rect.Y+rect.H)+40
+	before := topAccentY(tt.Image(), x0, x1, y0, y1)
+	if before < 0 {
+		t.Fatal("the card's border is not where it was expected")
+	}
+
 	tt.Move(rect.X+rect.W/2, rect.Y+rect.H/2)
+	waitForAnimation()
 	tt.Frame()
-	if diff := imageDiffInRect(before, tt.Image(), rect); diff <= 0 {
-		t.Errorf("the hovered card painted identically (diff %d); the lift did not happen", diff)
+	after := topAccentY(tt.Image(), x0, x1, y0, y1)
+	if after >= before {
+		t.Errorf("the hovered card did not lift: its border was at %d, now %d", before, after)
 	}
 }
 
