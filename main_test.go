@@ -1482,3 +1482,45 @@ func TestTheShortcutLabelFollowsThePlatform(t *testing.T) {
 		t.Errorf("the first page's shortcut reads %q, want %q", got, want)
 	}
 }
+
+func TestTheInterfaceHoldsUnderDesktopPreferences(t *testing.T) {
+	cases := []struct {
+		name  string
+		dark  bool
+		prefs ui.Preferences
+	}{
+		{"dark", true, ui.Preferences{TextScale: 1}},
+		{"less motion", false, ui.Preferences{ReduceMotion: true, TextScale: 1}},
+		{"high contrast", false, ui.Preferences{HighContrast: true, TextScale: 1}},
+		{"large text", false, ui.Preferences{TextScale: 1.5}},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			sc := stdioServer()
+			a := newTestApp(t, sc)
+			a.serverView = 1
+			a.status[sc.ID] = gateway.ServerView{Config: sc, Status: gateway.StatusReady, Tools: 3}
+			tt := ui.NewTester(a.view, 1080, 740)
+			tt.SetDark(tc.dark)
+			tt.SetPreferences(tc.prefs)
+			tt.Frame()
+
+			// Whatever the desktop asks for, the page still draws its parts and
+			// the switch stays reachable within the window.
+			if _, ok := tt.Find(sc.Name); !ok {
+				t.Fatalf("the card is missing; texts are %q", tt.Texts())
+			}
+			if !tt.HasText("ready") {
+				t.Errorf("the status is missing; texts are %q", tt.Texts())
+			}
+			sw, ok := tt.Find(sc.Name + " enabled")
+			if !ok {
+				t.Fatalf("the switch is missing; texts are %q", tt.Texts())
+			}
+			if sw.X < 0 || sw.X+sw.W > 1080 {
+				t.Errorf("the switch falls outside the window: %+v", sw)
+			}
+		})
+	}
+}
