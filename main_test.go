@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -9,6 +10,8 @@ import (
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
+	"github.com/mark3labs/mcp-go/client"
+	"github.com/mark3labs/mcp-go/mcp"
 
 	"mcp-go/internal/config"
 	"mcp-go/internal/gateway"
@@ -1065,5 +1068,51 @@ func TestMarketReportsARegistryFailure(t *testing.T) {
 
 	if !tt.HasText("The registry could not be reached") {
 		t.Errorf("the failure is not shown; texts are %q", tt.Texts())
+	}
+}
+
+// openRoutes shows the Routes page directly.
+func openRoutes(t *testing.T, a *app) *ui.Tester {
+	t.Helper()
+	a.router.Push("/routes")
+	return ui.NewTester(a.view, 1080, 740)
+}
+
+func TestRoutesShowsAnEmptyStateWithoutAgents(t *testing.T) {
+	a := newTestApp(t)
+	tt := openRoutes(t, a)
+
+	if !tt.HasText("No agents connected") {
+		t.Errorf("the empty state is missing; texts are %q", tt.Texts())
+	}
+}
+
+func TestRoutesListsAConnectedAgent(t *testing.T) {
+	a := newTestApp(t)
+	c, err := client.NewInProcessClient(a.gw.Downstream())
+	if err != nil {
+		t.Fatalf("in-process client: %v", err)
+	}
+	t.Cleanup(func() { _ = c.Close() })
+	if err := c.Start(context.Background()); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	req := mcp.InitializeRequest{
+		Request: mcp.Request{Method: string(mcp.MethodInitialize)},
+		Params: mcp.InitializeParams{
+			ProtocolVersion: mcp.LATEST_PROTOCOL_VERSION,
+			ClientInfo:      mcp.Implementation{Name: "mcp-gateway", Version: "test"},
+		},
+	}
+	if _, err := c.Initialize(context.Background(), req); err != nil {
+		t.Fatalf("initialize: %v", err)
+	}
+
+	tt := openRoutes(t, a)
+	if !tt.HasText("mcp-gateway") {
+		t.Fatalf("the connected agent is not listed; texts are %q", tt.Texts())
+	}
+	if !tt.HasText("1 connected") {
+		t.Errorf("the count is not shown; texts are %q", tt.Texts())
 	}
 }

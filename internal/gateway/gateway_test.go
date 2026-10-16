@@ -661,3 +661,91 @@ func TestGatewayServesOverHTTP(t *testing.T) {
 		t.Errorf("health is %+v, want ok with 2 tools", health)
 	}
 }
+
+// closeClient shuts a test client down at the test's end.
+func closeClient(t *testing.T, c *client.Client) {
+	t.Helper()
+	t.Cleanup(func() { _ = c.Close() })
+}
+
+func TestGatewayFollowsConnectedAgents(t *testing.T) {
+	g := newTestGateway(t)
+	c := downstream(t, g)
+	closeClient(t, c)
+
+	sessions := g.Sessions()
+	if len(sessions) != 1 {
+		t.Fatalf("there are %d sessions, want 1", len(sessions))
+	}
+	session := sessions[0]
+	if session.Client != "mcp-gateway" {
+		t.Errorf("the agent is %q, want the name it initialized with", session.Client)
+	}
+	if session.Version != "test" {
+		t.Errorf("the agent's version is %q", session.Version)
+	}
+	if session.Protocol == "" {
+		t.Error("the negotiated protocol version is not recorded")
+	}
+	if session.Calls != 0 {
+		t.Errorf("an agent that has not called anything has %d calls", session.Calls)
+	}
+}
+
+func TestGatewayCountsAnAgentsCalls(t *testing.T) {
+	sc := config.ServerConfig{
+		ID: "s1", Name: "Filesystem", Alias: "filesystem",
+		Transport: config.TransportStdio, Command: "true", Enabled: true,
+	}
+	g := newTestGateway(t, sc)
+	attach(t, g, sc, fakeUpstream(t))
+	c := downstream(t, g)
+	closeClient(t, c)
+
+	call(t, c, "filesystem__echo", map[string]any{"text": "hi"})
+	call(t, c, "filesystem__echo", map[string]any{"text": "hi"})
+
+	sessions := g.Sessions()
+	if len(sessions) != 1 {
+		t.Fatalf("there are %d sessions, want 1", len(sessions))
+	}
+	if sessions[0].Calls != 2 {
+		t.Errorf("two calls were counted as %d", sessions[0].Calls)
+	}
+	if sessions[0].LastActive.IsZero() {
+		t.Error("the last call's time is not recorded")
+	}
+}
+
+func TestGatewayDropsADisconnectedAgent(t *testing.T) {
+	g := newTestGateway(t)
+	c := downstream(t, g)
+
+	if len(g.Sessions()) != 1 {
+		t.Fatal("the agent is not listed while it is connected")
+	}
+	if err := c.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+
+	if left := g.Sessions(); len(left) != 0 {
+		t.Errorf("the agent is still listed after it disconnected: %v", left)
+	}
+}
+
+func TestGatewayNamesAConnectedAgentInItsActivity(t *testing.T) {
+	g := newTestGateway(t)
+	c := downstream(t, g)
+	closeClient(t, c)
+
+	var note string
+	for _, event := range g.Events() {
+		if strings.Contains(event.Text, "mcp-gateway") {
+			note = event.Text
+			break
+		}
+	}
+	if note == "" {
+		t.Errorf("the connecting agent is not named in the activity: %v", g.Events())
+	}
+}

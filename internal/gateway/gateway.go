@@ -95,6 +95,8 @@ type Gateway struct {
 	tokens  *issuedTokens
 	events  []Event
 	pending map[string]*pendingAuth
+	// sessions are the agents currently connected, keyed by their session ID.
+	sessions map[string]*sessionRecord
 
 	stream *server.StreamableHTTPServer
 	sse    *server.SSEServer
@@ -120,14 +122,17 @@ func New(cfg *config.Config, creds *config.CredentialStore, version string) *Gat
 		errs:      map[string]string{},
 		signedIn:  map[string]bool{},
 		pending:   map[string]*pendingAuth{},
+		sessions:  map[string]*sessionRecord{},
 		tokens:    newIssuedTokens(),
 		srv: server.NewMCPServer("mcp-gateway", version,
 			server.WithInstructions("A gateway that aggregates the tools of several MCP servers. Tool names are prefixed with the server they come from."),
 			server.WithToolCapabilities(true), // publish tools/list_changed as servers come and go
 			server.WithRecovery(),
+			server.WithHooks(newHooks()),
 		),
 	}
 	g.registerMetaTool()
+	g.trackSessions()
 	return g
 }
 

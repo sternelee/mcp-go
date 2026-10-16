@@ -274,6 +274,8 @@ func (a *app) view(c *ui.Context) {
 				switch {
 				case r.Match("/market"):
 					a.marketPage(c)
+				case r.Match("/routes"):
+					a.routesPage(c)
 				case r.Match("/tools"):
 					a.toolsPage(c)
 				case r.Match("/settings"):
@@ -307,6 +309,7 @@ func (a *app) sidebar(c *ui.Context) {
 		if ui.Sidebar(c, &page, func() {
 			ui.SidebarItem(c, "/servers", iconServers, "Servers")
 			ui.SidebarItem(c, "/market", iconStore, "Market")
+			ui.SidebarItem(c, "/routes", iconRoutes, "Routes")
 			ui.SidebarItem(c, "/tools", iconTools, "Tools")
 			ui.SidebarItem(c, "/settings", iconSliders, "Settings")
 		}).Grow(1).Label("Pages").Changed() {
