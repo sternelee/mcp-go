@@ -1116,3 +1116,88 @@ func TestRoutesListsAConnectedAgent(t *testing.T) {
 		t.Errorf("the count is not shown; texts are %q", tt.Texts())
 	}
 }
+
+// pageKeysForTest mirrors the order the sidebar and the shortcuts use, so a
+// test names the pages it expects.
+var pageKeysForTest = []ui.Key{ui.Key1, ui.Key2, ui.Key3, ui.Key4, ui.Key5}
+
+func TestCmdDigitShortcutsGoToEachPage(t *testing.T) {
+	a := newTestApp(t)
+	// The Market page searches the registry as it opens, so point it at a
+	// stub before any page is built.
+	ts := registryStub(t)
+	a.reg = &registry.Client{BaseURL: ts.URL}
+
+	tt := ui.NewTester(a.view, 1080, 740)
+	want := []string{"/servers", "/market", "/routes", "/tools", "/settings"}
+	for i, path := range want {
+		tt.Key(ui.Cmd, pageKeysForTest[i])
+		tt.Frame()
+		if a.router.Path() != path {
+			t.Errorf("Cmd+%d went to %q, want %q", i+1, a.router.Path(), path)
+		}
+	}
+}
+
+func TestEachPageNamesItself(t *testing.T) {
+	a := newTestApp(t)
+	// The Market page searches the registry as it opens; keep that off the
+	// network.
+	ts := registryStub(t)
+	a.reg = &registry.Client{BaseURL: ts.URL}
+
+	tt := ui.NewTester(a.view, 1080, 740)
+	// The first page is titled as the sidebar shows it.
+	if got := a.router.Title(); got != "Servers" {
+		t.Errorf("the first page's title is %q, want %q", got, "Servers")
+	}
+	// A page pushed directly is titled too, so back and forward menus and
+	// screen readers name it.
+	for _, p := range pages[1:] {
+		a.router.Push(p.path)
+		tt.Frame()
+		if got := a.router.Title(); got != p.title {
+			t.Errorf("%s is titled %q, want %q", p.path, got, p.title)
+		}
+	}
+}
+
+func TestTheStatusWordSurvivesItsColorChange(t *testing.T) {
+	sc := stdioServer()
+	a := newTestApp(t, sc)
+	a.status[sc.ID] = gateway.ServerView{Config: sc, Status: gateway.StatusReady, Tools: 1}
+	tt := ui.NewTester(a.view, 1080, 740)
+	if !tt.HasText("ready") {
+		t.Fatalf("a ready server is not labelled; texts are %q", tt.Texts())
+	}
+	// An animated color must not stop the row from saying what changed.
+	a.status[sc.ID] = gateway.ServerView{Config: sc, Status: gateway.StatusError, Err: "boom"}
+	tt.Frame()
+	if !tt.HasText("error") {
+		t.Errorf("the row does not say it failed; texts are %q", tt.Texts())
+	}
+}
+
+func TestGridCardStaysInPlaceUnderThePointer(t *testing.T) {
+	sc := stdioServer()
+	a := newTestApp(t, sc)
+	a.serverView = 1
+	const width, height = 1080, 740
+	tt := ui.NewTester(a.view, width, height)
+
+	rect, ok := tt.Find(sc.Name)
+	if !ok {
+		t.Fatalf("the card is not drawn; texts are %q", tt.Texts())
+	}
+	// Hover the card and let its lift settle.
+	tt.Move(rect.X+rect.W/2, rect.Y+rect.H/2)
+	tt.Frame()
+
+	after, ok := tt.Find(sc.Name)
+	if !ok {
+		t.Fatal("the card vanished under the pointer")
+	}
+	if after.X < 0 || after.Y < 0 || after.X+after.W > width || after.Y+after.H > height {
+		t.Errorf("the lifted card falls outside the window %dx%d: %+v", width, height, after)
+	}
+}

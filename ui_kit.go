@@ -1,6 +1,8 @@
 package main
 
 import (
+	"time"
+
 	"github.com/egoist/mygo/ui"
 
 	"mcp-go/internal/gateway"
@@ -23,7 +25,8 @@ var (
 // statusPill draws a server's or the gateway's state as a dot and a word, in
 // the state's color: "ready", "connecting", "sign in", "error" or "off". On
 // an accent-painted row every part takes the accent's text color, so it reads
-// on the selection.
+// on the selection. The color settles over a short beat when the state changes,
+// so a server coming ready reads as a change rather than a jump.
 func statusPill(c *ui.Context, s gateway.Status, onAccent bool) {
 	t := c.Theme()
 	color := statusColor(t, s)
@@ -31,10 +34,17 @@ func statusPill(c *ui.Context, s gateway.Status, onAccent bool) {
 		color = t.AccentText
 	}
 	ui.Row(c).Gap(6).AlignItems(ui.Center).Shrink(0).Children(func() {
-		ui.Text(c, "●").FontSize(9).TextColor(color)
-		ui.Text(c, statusLabel(s)).FontSize(11).TextColor(color)
+		dot := ui.Text(c, "●").FontSize(9)
+		dot.TextColor(dot.AnimateColor("status", color, statusAnimation))
+		label := ui.Text(c, statusLabel(s)).FontSize(11)
+		label.TextColor(label.AnimateColor("status", color, statusAnimation))
 	})
 }
+
+// statusAnimation is the short color fade a state indicator uses when its
+// state changes. Colors keep changing smoothly even when the desktop asks for
+// less motion, so this never moves anything.
+var statusAnimation = ui.Animation{Duration: 180 * time.Millisecond, Ease: ui.EaseInOut}
 
 // livePill is statusPill for a plain up-or-down fact, such as the gateway
 // serving, where there is no gateway.Status to show.
@@ -49,16 +59,26 @@ func livePill(c *ui.Context, on bool, onText, offText string) {
 		text = onText
 	}
 	ui.Row(c).Gap(6).AlignItems(ui.Center).Shrink(0).Children(func() {
-		ui.Text(c, "●").FontSize(9).TextColor(color)
-		ui.Text(c, text).FontSize(11).TextColor(color)
+		dot := ui.Text(c, "●").FontSize(9)
+		dot.TextColor(dot.AnimateColor("live", color, statusAnimation))
+		label := ui.Text(c, text).FontSize(11)
+		label.TextColor(label.AnimateColor("live", color, statusAnimation))
 	})
 }
 
-// card lays out a titled section, with an optional icon before its title.
+// surfaceShadow lifts a panel off the page: cards, lists and detail panes all
+// take it, so the interface reads as stacked surfaces rather than flat regions.
+func surfaceShadow(e ui.Element) ui.Element {
+	return e.Shadow(0, 1, 3, 0, ui.RGBA(0, 0, 0, 0.05))
+}
+
+// card lays out a titled section, with an optional icon before its title. A
+// hairline shadow lifts it off the page, so a column of cards reads as
+// stacked layers rather than one flat sheet.
 func card(c *ui.Context, icon *ui.SVG, title string, body func()) {
 	t := c.Theme()
-	ui.Column(c).Padding(18).Gap(12).Radius(12).Background(t.Background).
-		Border(1, t.Border).Children(func() {
+	surfaceShadow(ui.Column(c).Padding(18).Gap(12).Radius(12).Background(t.Background).
+		Border(1, t.Border)).Children(func() {
 		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 			if icon != nil {
 				ui.Icon(c, icon).FontSize(15).TextColor(t.Accent)

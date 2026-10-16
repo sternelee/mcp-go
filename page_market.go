@@ -85,9 +85,9 @@ func (a *app) marketPage(c *ui.Context) {
 		m.list.Key = func(i int) any { return m.results[i].Name }
 		m.list.Label = func(i int) string { return m.results[i].ShortName() }
 		m.list.Selected = &m.sel
-		ui.List(c.Key("market"), &m.list, len(m.results), func(i int) {
+		surfaceShadow(ui.List(c.Key("market"), &m.list, len(m.results), func(i int) {
 			a.marketRow(c, i)
-		}).Grow(1).Border(1, t.Border).Radius(10).Padding(4).Label("Registry results")
+		}).Grow(1).Border(1, t.Border).Radius(10).Padding(4)).Label("Registry results")
 
 		if m.cursor != "" {
 			ui.Row(c).Justify(ui.Center).Children(func() {
@@ -105,7 +105,20 @@ func (a *app) marketRow(c *ui.Context, i int) {
 	t := c.Theme()
 	install, installable := s.Install()
 
-	ui.Row(c).Height(56).PaddingX(12).Gap(12).AlignItems(ui.Center).Children(func() {
+	// A search's results arrive one after another, by the spring above and a
+	// small growing delay, so a new page of them reads as a cascade rather
+	// than appearing all at once. The delay is capped so a long page is not
+	// still arriving when the user has read past it.
+	anim := ui.Snappy
+	anim.Delay = time.Duration(min(i, 8)) * 20 * time.Millisecond
+
+	row := ui.Row(c).Height(56).PaddingX(12).Gap(12).AlignItems(ui.Center)
+	row.Transition(ui.ElementTransition{
+		Animation: &anim,
+		Enter:     &ui.Motion{Y: 6},
+		Exit:      &ui.Motion{Collapse: true},
+	})
+	row.Children(func() {
 		ui.Avatar(c, s.ShortName(), nil).FontSize(15)
 		ui.Column(c).Grow(1).MinWidth(0).Gap(1).Children(func() {
 			ui.Text(c, s.ShortName()).SingleLine()

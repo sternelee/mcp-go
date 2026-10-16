@@ -48,6 +48,29 @@ type serverForm struct {
 // shows them.
 var transportOptions = []string{"stdio", "SSE", "HTTP"}
 
+// pageDef is one page of the app: where it lives, what it is called, and the
+// icon the sidebar shows for it. The sidebar, the router's titles, the
+// Cmd+digit shortcuts and the screen-reader page names all read this list, so
+// a page is described once.
+type pageDef struct {
+	path  string
+	title string
+	icon  *ui.SVG
+}
+
+// pages are the app's pages, in the order the sidebar shows them and the
+// order Cmd+1 … Cmd+5 reaches them.
+var pages = []pageDef{
+	{"/servers", "Servers", iconServers},
+	{"/market", "Market", iconStore},
+	{"/routes", "Routes", iconRoutes},
+	{"/tools", "Tools", iconTools},
+	{"/settings", "Settings", iconSliders},
+}
+
+// pageKeys go to the pages above, in order: Cmd+1 is Servers, and so on.
+var pageKeys = []ui.Key{ui.Key1, ui.Key2, ui.Key3, ui.Key4, ui.Key5}
+
 // inboundModes are the ways the gateway can guard itself, in the order the
 // interface shows them.
 var inboundModes = []config.InboundMode{config.InboundOff, config.InboundToken, config.InboundOAuth}
@@ -145,11 +168,16 @@ type app struct {
 }
 
 func newApp(cfg *config.Config, creds *config.CredentialStore, gw *gateway.Gateway) *app {
+	router := ui.NewRouter("/servers")
+	// Pages move with a spring, so a page keeps its velocity when the user
+	// goes on to another mid-flight, rather than stopping dead at the edge.
+	router.Animation = &ui.Snappy
+
 	a := &app{
 		cfg:          cfg,
 		creds:        creds,
 		gw:           gw,
-		router:       ui.NewRouter("/servers"),
+		router:       router,
 		port:         float64(cfg.Port),
 		status:       map[string]gateway.ServerView{},
 		flags:        map[string]*bool{},
@@ -267,20 +295,26 @@ func (a *app) view(c *ui.Context) {
 		c.Toast(a.pending)
 		a.pending = ""
 	}
+	a.pageShortcuts(c)
 	ui.Row(c).Fill().AlignItems(ui.Stretch).Children(func() {
 		a.sidebar(c)
 		ui.Column(c).Grow(1).MinWidth(0).Children(func() {
 			a.router.View(c, func(r *ui.Route) {
 				switch {
 				case r.Match("/market"):
+					r.Title("Market")
 					a.marketPage(c)
 				case r.Match("/routes"):
+					r.Title("Routes")
 					a.routesPage(c)
 				case r.Match("/tools"):
+					r.Title("Tools")
 					a.toolsPage(c)
 				case r.Match("/settings"):
+					r.Title("Settings")
 					a.settingsPage(c)
 				default:
+					r.Title("Servers")
 					a.serversPage(c)
 				}
 			})
@@ -290,6 +324,19 @@ func (a *app) view(c *ui.Context) {
 	a.serverForm(c)
 	a.importDialog(c)
 	a.removeDialog(c)
+}
+
+// pageShortcuts binds Cmd+1 … Cmd+5 to the pages, the way a browser's tabs
+// are reached. They are registered in the window's scope, so they are live
+// wherever the focus is.
+func (a *app) pageShortcuts(c *ui.Context) {
+	for i, p := range pages {
+		if i >= len(pageKeys) {
+			break
+		}
+		path := p.path
+		c.OnShortcut(ui.Cmd, pageKeys[i], func() { a.router.Push(path) })
+	}
 }
 
 // sidebar lists the pages, and stays as the page changes.
@@ -307,11 +354,9 @@ func (a *app) sidebar(c *ui.Context) {
 			})
 		})
 		if ui.Sidebar(c, &page, func() {
-			ui.SidebarItem(c, "/servers", iconServers, "Servers")
-			ui.SidebarItem(c, "/market", iconStore, "Market")
-			ui.SidebarItem(c, "/routes", iconRoutes, "Routes")
-			ui.SidebarItem(c, "/tools", iconTools, "Tools")
-			ui.SidebarItem(c, "/settings", iconSliders, "Settings")
+			for _, p := range pages {
+				ui.SidebarItem(c, p.path, p.icon, p.title)
+			}
 		}).Grow(1).Label("Pages").Changed() {
 			a.router.Push(page)
 		}

@@ -76,9 +76,9 @@ func (a *app) serversPage(c *ui.Context) {
 		a.serversList.Key = func(i int) any { return a.cfg.Servers[visible[i]].ID }
 		a.serversList.Label = func(i int) string { return a.cfg.Servers[visible[i]].Name }
 		a.serversList.Selected = &a.sel
-		list := ui.List(c.Key("servers"), &a.serversList, len(visible), func(i int) {
+		list := surfaceShadow(ui.List(c.Key("servers"), &a.serversList, len(visible), func(i int) {
 			a.serverRow(c, visible[i], i)
-		}).Grow(1).Border(1, t.Border).Radius(10).Padding(4)
+		}).Grow(1).Border(1, t.Border).Radius(10).Padding(4))
 		// Opening a server is Enter or a double click on its row.
 		if list.Submitted() && selected >= 0 {
 			a.editServer(selected)
@@ -205,6 +205,25 @@ func (a *app) revealServer(id string) {
 	a.sel = -1
 }
 
+// rowTransition brings a server's row or card in as it appears and collapses
+// it as it goes, so adding, removing or filtering reads as a change rather
+// than the list jumping. The spring keeps the rise smooth when several rows
+// move at once.
+var rowTransition = ui.ElementTransition{
+	Animation: &ui.Snappy,
+	Enter:     &ui.Motion{Y: 6},
+	Exit:      &ui.Motion{Collapse: true},
+}
+
+// cardTransition is rowTransition for a grid card, which leaves by scaling
+// down rather than collapsing: a card has no height of its own in the wrap
+// layout to take away.
+var cardTransition = ui.ElementTransition{
+	Animation: &ui.Snappy,
+	Enter:     &ui.Motion{Y: 8, Scale: 0.98},
+	Exit:      &ui.Motion{Scale: 0.96},
+}
+
 // serverRow draws one server. i is its index in the configuration, row its
 // index in the list the filter leaves.
 func (a *app) serverRow(c *ui.Context, i, row int) {
@@ -216,6 +235,7 @@ func (a *app) serverRow(c *ui.Context, i, row int) {
 	line.ContextMenu(func(m *ui.Menu) {
 		a.serverMenu(m, sc, i, view)
 	})
+	line.Transition(rowTransition)
 
 	line.Children(func() {
 		// The list paints a chosen row in the accent color, so its secondary
@@ -236,7 +256,8 @@ func (a *app) serverRow(c *ui.Context, i, row int) {
 		if selected {
 			badge.Background(t.AccentText.Alpha(0.22)).TextColor(t.AccentText)
 		}
-		ui.Textf(c, "%d tools", view.Tools).FontSize(11).TextColor(muted).Width(54).TextAlign(ui.End)
+		ui.Textf(c, "%d tools", view.Tools).FontSize(11).TextColor(muted).Width(54).TextAlign(ui.End).
+			ContentTransition(ui.ContentTransition{Numeric: true})
 		if signInOffered(sc, view) {
 			// Authorizing is the one step a switch cannot express, so it keeps a
 			// button. It is offered whatever the connection state, so a server
@@ -268,10 +289,19 @@ func (a *app) serverCard(c *ui.Context, i, item int) {
 	if item == a.sel {
 		border = t.Accent
 	}
-	box := ui.Column(c).Fill().Padding(14).Gap(8).Radius(12).Background(t.Background).Border(1, border)
+	box := surfaceShadow(ui.Column(c).Fill().Padding(14).Gap(8).Radius(12).Background(t.Background).Border(1, border))
 	box.ContextMenu(func(m *ui.Menu) {
 		a.serverMenu(m, sc, i, view)
 	})
+	// The card rises a little under the pointer, and its edge settles as the
+	// selection moves, so a wall of servers is easy to scan and to target. The
+	// lift only paints, so a large grid stays smooth.
+	lift := ui.Pose{}
+	if box.Hovered() {
+		lift = ui.Pose{Y: -3}
+	}
+	box.AnimatePose(lift, ui.Snappy)
+	box.Transition(cardTransition)
 
 	box.Children(func() {
 		ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
@@ -285,7 +315,8 @@ func (a *app) serverCard(c *ui.Context, i, item int) {
 		ui.Text(c, serverDetail(sc, view)).FontSize(11).TextColor(t.TextMuted).SingleLine()
 		ui.Spacer(c)
 		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-			ui.Textf(c, "%d tools", view.Tools).FontSize(11).TextColor(t.TextMuted)
+			ui.Textf(c, "%d tools", view.Tools).FontSize(11).TextColor(t.TextMuted).
+				ContentTransition(ui.ContentTransition{Numeric: true})
 			ui.Spacer(c)
 			if signInOffered(sc, view) {
 				if view.SignedIn {
