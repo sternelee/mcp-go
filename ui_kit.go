@@ -68,8 +68,17 @@ func livePill(c *ui.Context, on bool, onText, offText string) {
 
 // surfaceShadow lifts a panel off the page: cards, lists and detail panes all
 // take it, so the interface reads as stacked surfaces rather than flat regions.
-func surfaceShadow(e ui.Element) ui.Element {
-	return e.Shadow(0, 1, 3, 0, ui.RGBA(0, 0, 0, 0.05))
+// A shadow shows depth only where it is darker than what it falls on, so it is
+// faint over a light page and deeper over a dark one, where a faint black would
+// not read at all.
+func surfaceShadow(t *ui.Theme, e ui.Element) ui.Element {
+	alpha := float32(0.05)
+	// Rec. 601 luma, 0 for black and 1 for white.
+	luma := (0.299*float32(t.Background.R) + 0.587*float32(t.Background.G) + 0.114*float32(t.Background.B)) / 255
+	if luma < 0.5 {
+		alpha = 0.4
+	}
+	return e.Shadow(0, 1, 3, 0, ui.RGBA(0, 0, 0, alpha))
 }
 
 // card lays out a titled section, with an optional icon before its title. A
@@ -77,7 +86,7 @@ func surfaceShadow(e ui.Element) ui.Element {
 // stacked layers rather than one flat sheet.
 func card(c *ui.Context, icon *ui.SVG, title string, body func()) {
 	t := c.Theme()
-	surfaceShadow(ui.Column(c).Padding(18).Gap(12).Radius(12).Background(t.Background).
+	surfaceShadow(t, ui.Column(c).Padding(18).Gap(12).Radius(12).Background(t.Background).
 		Border(1, t.Border)).Children(func() {
 		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 			if icon != nil {

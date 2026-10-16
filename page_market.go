@@ -85,7 +85,7 @@ func (a *app) marketPage(c *ui.Context) {
 		m.list.Key = func(i int) any { return m.results[i].Name }
 		m.list.Label = func(i int) string { return m.results[i].ShortName() }
 		m.list.Selected = &m.sel
-		surfaceShadow(ui.List(c.Key("market"), &m.list, len(m.results), func(i int) {
+		surfaceShadow(t, ui.List(c.Key("market"), &m.list, len(m.results), func(i int) {
 			a.marketRow(c, i)
 		}).Grow(1).Border(1, t.Border).Radius(10).Padding(4)).Label("Registry results")
 

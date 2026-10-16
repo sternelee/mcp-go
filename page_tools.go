@@ -111,7 +111,7 @@ func (a *app) toolTable(c *ui.Context, visible []int) {
 	a.toolsList.Label = func(i int) string { return a.tools[visible[i]].Name }
 	a.toolsList.Selected = &a.toolSel
 
-	surfaceShadow(ui.Table(c.Key("tools"), &a.toolsList, columns, len(visible), func(row, col int) {
+	surfaceShadow(t, ui.Table(c.Key("tools"), &a.toolsList, columns, len(visible), func(row, col int) {
 		tool := a.tools[visible[row]]
 		// The chosen row is painted in the accent color, so its secondary
 		// columns have to be drawn for a dark background.
@@ -134,14 +134,14 @@ func (a *app) toolTable(c *ui.Context, visible []int) {
 func (a *app) toolDetail(c *ui.Context, visible []int) {
 	t := c.Theme()
 	if a.toolSel < 0 || a.toolSel >= len(visible) {
-		surfaceShadow(ui.Column(c).Fill().Center().Radius(12).Background(t.Background).Border(1, t.Border)).Children(func() {
+		surfaceShadow(t, ui.Column(c).Fill().Center().Radius(12).Background(t.Background).Border(1, t.Border)).Children(func() {
 			ui.Text(c, "Select a tool").TextColor(t.TextMuted)
 		})
 		return
 	}
 	tool := a.tools[visible[a.toolSel]]
 
-	surfaceShadow(ui.Column(c).Fill().Padding(16).Gap(8).Radius(12).Background(t.Background).Border(1, t.Border)).Children(func() {
+	surfaceShadow(t, ui.Column(c).Fill().Padding(16).Gap(8).Radius(12).Background(t.Background).Border(1, t.Border)).Children(func() {
 		ui.Text(c, tool.Name).FontSize(14).Bold().SingleLine()
 		ui.Text(c, fmt.Sprintf("%s · %s at %s", tool.ServerName, tool.Upstream, a.transportWord(tool.ServerID))).
 			FontSize(11).TextColor(t.TextMuted).SingleLine()

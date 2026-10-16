@@ -76,7 +76,7 @@ func (a *app) serversPage(c *ui.Context) {
 		a.serversList.Key = func(i int) any { return a.cfg.Servers[visible[i]].ID }
 		a.serversList.Label = func(i int) string { return a.cfg.Servers[visible[i]].Name }
 		a.serversList.Selected = &a.sel
-		list := surfaceShadow(ui.List(c.Key("servers"), &a.serversList, len(visible), func(i int) {
+		list := surfaceShadow(t, ui.List(c.Key("servers"), &a.serversList, len(visible), func(i int) {
 			a.serverRow(c, visible[i], i)
 		}).Grow(1).Border(1, t.Border).Radius(10).Padding(4))
 		// Opening a server is Enter or a double click on its row.
@@ -289,7 +289,7 @@ func (a *app) serverCard(c *ui.Context, i, item int) {
 	if item == a.sel {
 		border = t.Accent
 	}
-	box := surfaceShadow(ui.Column(c).Fill().Padding(14).Gap(8).Radius(12).Background(t.Background).Border(1, border))
+	box := surfaceShadow(t, ui.Column(c).Fill().Padding(14).Gap(8).Radius(12).Background(t.Background).Border(1, border))
 	box.ContextMenu(func(m *ui.Menu) {
 		a.serverMenu(m, sc, i, view)
 	})

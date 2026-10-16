@@ -1330,26 +1330,50 @@ func pixAt(img *image.RGBA, x, y int) [3]int {
 }
 
 func TestAShadowedPanelCastsAShadow(t *testing.T) {
-	view := func(c *ui.Context) {
-		th := c.Theme()
-		ui.Column(c).Fill().Background(th.Background).Padding(40).Children(func() {
-			surfaceShadow(ui.Column(c).Width(200).Height(80).Radius(12).
-				Background(th.Background).Border(1, th.Border))
+	// The shadow is faint over a light page and deeper over a dark one, so it
+	// shows depth in both appearances.
+	for _, dark := range []bool{false, true} {
+		dark := dark
+		t.Run(fmt.Sprintf("dark=%v", dark), func(t *testing.T) {
+			view := func(c *ui.Context) {
+				th := c.Theme()
+				ui.Column(c).Fill().Background(th.Background).Padding(40).Children(func() {
+					surfaceShadow(th, ui.Column(c).Width(200).Height(80).Radius(12).
+						Background(th.Background).Border(1, th.Border))
+				})
+			}
+			tt := ui.NewTester(view, 400, 300)
+			tt.SetDark(dark)
+			tt.Frame()
+
+			// Just under the panel the shadow darkens the page; well below it
+			// the page is plain, so the near pixel must be darker than the far.
+			boxBottom := 40 + 80
+			near := pixAt(tt.Image(), 100, boxBottom+1)
+			far := pixAt(tt.Image(), 100, boxBottom+60)
+			if near[0] < 0 || far[0] < 0 {
+				t.Fatalf("the probes fell outside the frame: near %v far %v", near, far)
+			}
+			if near[0] >= far[0] {
+				t.Errorf("the panel casts no shadow: near %v, far %v", near, far)
+			}
 		})
 	}
-	tt := ui.NewTester(view, 400, 300)
-	tt.Frame()
+}
 
-	// Just under the panel the shadow darkens the page; well below it the page
-	// is plain, so the near pixel must be darker than the far one.
-	boxBottom := 40 + 80
-	near := pixAt(tt.Image(), 100, boxBottom+1)
-	far := pixAt(tt.Image(), 100, boxBottom+60)
-	if near[0] < 0 || far[0] < 0 {
-		t.Fatalf("the probes fell outside the frame: near %v far %v", near, far)
+func TestNavigatingWithLessMotionStillChangesThePage(t *testing.T) {
+	a := newTestApp(t)
+	tt := ui.NewTester(a.view, 1080, 740)
+	tt.SetPreferences(ui.Preferences{ReduceMotion: true, TextScale: 1})
+
+	// The page transition goes at once, but it still goes.
+	tt.Key(ui.Cmd, ui.Key5)
+	tt.Frame()
+	if a.router.Path() != "/settings" {
+		t.Errorf("the page is %q, want %q", a.router.Path(), "/settings")
 	}
-	if near[0] >= far[0] {
-		t.Errorf("the panel casts no shadow: near %v, far %v", near, far)
+	if !tt.HasText("Where the gateway listens") {
+		t.Errorf("the settings page is not shown; texts are %q", tt.Texts())
 	}
 }
 
