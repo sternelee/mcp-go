@@ -1168,19 +1168,31 @@ func TestPanelRowsOpenTheMainWindow(t *testing.T) {
 	a.openMain = func(page string) { opened = append(opened, page) }
 
 	tt := openPanel(t, a)
+	if err := tt.Click("Open"); err != nil {
+		t.Fatalf("click the Open button: %v", err)
+	}
+	if len(opened) != 1 || opened[0] != "/servers" {
+		t.Errorf("Open did not open the servers page; opened is %q", opened)
+	}
 	if err := tt.Click("Filesystem"); err != nil {
 		t.Fatalf("click the server row: %v", err)
 	}
-	if len(opened) != 1 || opened[0] != "/servers" {
+	if len(opened) != 2 || opened[1] != "/servers" {
 		t.Errorf("the server row did not open the servers page; opened is %q", opened)
 	}
 	if err := tt.Click("Routes"); err != nil {
 		t.Fatalf("open the Routes tab: %v", err)
 	}
+	if err := tt.Click("Open"); err != nil {
+		t.Fatalf("click Open on the routes tab: %v", err)
+	}
+	if len(opened) != 3 || opened[2] != "/routes" {
+		t.Errorf("Open did not follow the tab to the routes page; opened is %q", opened)
+	}
 	if err := tt.Click("mcp-gateway"); err != nil {
 		t.Fatalf("click the agent row: %v", err)
 	}
-	if len(opened) != 2 || opened[1] != "/routes" {
+	if len(opened) != 4 || opened[3] != "/routes" {
 		t.Errorf("the agent row did not open the routes page; opened is %q", opened)
 	}
 }

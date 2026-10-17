@@ -284,6 +284,17 @@ func (a *app) post(fn func()) {
 // live reports whether there is a window for background work to report to.
 func (a *app) live() bool { return a.win != nil }
 
+// showMain raises the main window without moving it to another page, the
+// way the Dock icon and the tray's Open entry bring the app back after
+// its window was hidden.
+func (a *app) showMain() {
+	if a.win == nil {
+		return
+	}
+	a.win.Show()
+	a.win.Focus()
+}
+
 // sync connects the gateway to the configured servers in the background.
 func (a *app) sync() {
 	if !a.live() {

@@ -45,6 +45,13 @@ func main() {
 			e.PreventDefault()
 			a.win.Hide()
 		})
+		// Clicking the Dock icon brings the window back too: without this,
+		// a hidden window leaves nothing to click on.
+		mygo.App.OnActivate(func(visible bool) {
+			if !visible {
+				a.showMain()
+			}
+		})
 		if mb, err := runMenubar(a); err != nil {
 			log.Printf("mcp-go: menu bar: %v", err)
 		} else {

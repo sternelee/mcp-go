@@ -97,12 +97,8 @@ func (m *menubar) open(page string) {
 	if m.a.panel != nil {
 		m.a.panel.Close()
 	}
-	if m.a.win == nil {
-		return
-	}
 	m.a.post(func() { m.a.router.Push(page) })
-	m.a.win.Show()
-	m.a.win.Focus()
+	m.a.showMain()
 }
 
 // refresh updates the tray title and tooltip from the state the app has just
@@ -148,6 +144,13 @@ func (a *app) panelView(c *ui.Context) {
 			ui.Icon(c, iconZap).FontSize(15).TextColor(t.Accent)
 			ui.Text(c, "MCP Gateway").Bold().Grow(1)
 			livePill(c, a.gw.Serving(), "serving", "stopped")
+			page := "/servers"
+			if a.panelTab == 1 {
+				page = "/routes"
+			}
+			if ui.Button(c, "Open").Clicked() && a.openMain != nil {
+				a.openMain(page)
+			}
 		})
 		ui.Row(c).Padding(0, 16, 10).Children(func() {
 			ui.Segmented(c, &a.panelTab, "Servers", "Routes").Label("Panel section")
