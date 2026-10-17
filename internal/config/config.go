@@ -162,6 +162,9 @@ type Config struct {
 	Servers []ServerConfig `json:"servers"`
 	// Inbound is how callers of the gateway prove who they are.
 	Inbound InboundMode `json:"inbound,omitempty"`
+
+	// SidebarCollapsed remembers the window sidebar's folded state.
+	SidebarCollapsed bool `json:"sidebarCollapsed,omitempty"`
 }
 
 // Default is the configuration a fresh install starts from.

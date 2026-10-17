@@ -3,10 +3,12 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
 	"runtime"
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
@@ -147,20 +149,21 @@ type app struct {
 	// for the process, so an edit is never lost to a rebuilt slice.
 	flags map[string]*bool
 
-	sel         int
-	toolSel     int
-	panelTab    int // which tab the menu bar's panel shows
-	port        float64
-	busy        string
-	pending     string // a toast waiting for the next frame
-	filter      string // narrows the servers list
-	serverView  int    // 0 lists the servers, 1 shows them as cards
-	toolFilter  string // narrows the tools table
-	form        serverForm
-	imp         importForm
-	confirm     bool
-	removeID    string
-	serversGrid ui.GridState
+	sel              int
+	toolSel          int
+	panelTab         int // which tab the menu bar's panel shows
+	port             float64
+	busy             string
+	pending          string // a toast waiting for the next frame
+	filter           string // narrows the servers list
+	serverView       int    // 0 lists the servers, 1 shows them as cards
+	sidebarCollapsed bool   // the sidebar folded to its icon rail
+	toolFilter       string // narrows the tools table
+	form             serverForm
+	imp              importForm
+	confirm          bool
+	removeID         string
+	serversGrid      ui.GridState
 
 	// reg searches the official MCP registry; a field so a test can point it
 	// at a stub. market is the Market page's state.
@@ -190,15 +193,16 @@ func newApp(cfg *config.Config, creds *config.CredentialStore, gw *gateway.Gatew
 	router.Animation = &ui.Snappy
 
 	a := &app{
-		cfg:          cfg,
-		creds:        creds,
-		gw:           gw,
-		router:       router,
-		port:         float64(cfg.Port),
-		status:       map[string]gateway.ServerView{},
-		flags:        map[string]*bool{},
-		openExternal: mygo.Shell.OpenExternal,
-		reg:          registry.New(),
+		cfg:              cfg,
+		creds:            creds,
+		gw:               gw,
+		router:           router,
+		port:             float64(cfg.Port),
+		status:           map[string]gateway.ServerView{},
+		flags:            map[string]*bool{},
+		openExternal:     mygo.Shell.OpenExternal,
+		reg:              registry.New(),
+		sidebarCollapsed: cfg.SidebarCollapsed,
 	}
 	a.serversList.Selected = &a.sel
 	a.toolsList.Selected = &a.toolSel
@@ -372,38 +376,101 @@ func (a *app) pageShortcuts(c *ui.Context) {
 	}
 }
 
-// sidebar lists the pages, and stays as the page changes.
+// The sidebar folds between its full width and an icon-only rail.
+const (
+	sidebarWidth = 216
+	sidebarRail  = 64
+)
+
+// sidebar lists the pages, and stays as the page changes. A little of the
+// window shows through it, and it folds to a rail of icons; the fold is
+// remembered across runs.
 func (a *app) sidebar(c *ui.Context) {
 	t := c.Theme()
 	page := a.router.Path()
-	ui.Column(c).Width(216).Background(t.Surface).Shrink(0).Children(func() {
-		ui.Row(c).Padding(18, 16, 14).Gap(10).AlignItems(ui.Center).Children(func() {
+	col := ui.Column(c).Shrink(0).Background(t.Surface.Alpha(0.65))
+	target := float32(sidebarWidth)
+	if a.sidebarCollapsed {
+		target = sidebarRail
+	}
+	// The fold eases between the two widths, so the page beside it does not
+	// jump.
+	col.Width(col.Animate("sidebar width", target, 180*time.Millisecond)).Children(func() {
+		head := ui.Row(c).Padding(18, 16, 14).Gap(10).AlignItems(ui.Center)
+		if a.sidebarCollapsed {
+			head = head.Justify(ui.Center)
+		}
+		head.Children(func() {
 			ui.Column(c).Width(30).Height(30).Center().Radius(8).Background(t.Accent).Children(func() {
 				ui.Icon(c, iconZap).FontSize(15).TextColor(t.AccentText)
 			})
-			ui.Column(c).Gap(1).Children(func() {
-				ui.Text(c, "MCP Gateway").FontSize(13).Bold()
-				ui.Text(c, "v"+version).FontSize(10).TextColor(t.TextMuted)
-			})
+			if !a.sidebarCollapsed {
+				ui.Column(c).Gap(1).Children(func() {
+					ui.Text(c, "MCP Gateway").FontSize(13).Bold()
+					ui.Text(c, "v"+version).FontSize(10).TextColor(t.TextMuted)
+				})
+			}
 		})
 		if ui.Sidebar(c, &page, func() {
 			for i, p := range pages {
 				// The shortcut is what the visible name does not say, so it goes
 				// in the tooltip, which also describes the item to screen readers.
-				item := ui.SidebarItem(c, p.path, p.icon, p.title)
+				tip := p.title
 				if i < len(pageKeys) {
-					item.Tooltip(p.title + " (" + pageShortcutLabel(i) + ")")
+					tip += " (" + pageShortcutLabel(i) + ")"
+				}
+				if a.sidebarCollapsed {
+					// In the rail the item is a tile around its icon; the name
+					// lives only in the tooltip.
+					ui.Row(c).Justify(ui.Center).Children(func() {
+						ui.SidebarItem(c, p.path, p.icon, "").Tooltip(tip)
+					})
+				} else {
+					ui.SidebarItem(c, p.path, p.icon, p.title).Tooltip(tip)
 				}
 			}
-		}).Grow(1).Label("Pages").Changed() {
+		}).Background(ui.Transparent).Grow(1).Label("Pages").Changed() {
 			a.router.Push(page)
 		}
 		ui.Divider(c)
-		ui.Row(c).Padding(10, 20, 12).Gap(8).AlignItems(ui.Center).Children(func() {
-			livePill(c, a.gw.Serving(), "serving", "stopped")
-			ui.Text(c, a.summary()).FontSize(11).TextColor(t.TextMuted).Grow(1)
-		})
+		if a.sidebarCollapsed {
+			ui.Row(c).Padding(10, 0, 12).Justify(ui.Center).Children(func() {
+				a.collapseButton(c, t)
+			})
+		} else {
+			ui.Row(c).Padding(10, 16, 12).Gap(8).AlignItems(ui.Center).Children(func() {
+				livePill(c, a.gw.Serving(), "serving", "stopped")
+				ui.Text(c, a.summary()).FontSize(11).TextColor(t.TextMuted).Grow(1)
+				a.collapseButton(c, t)
+			})
+		}
 	})
+}
+
+// collapseButton is the sidebar's fold toggle; its label is what tests click.
+func (a *app) collapseButton(c *ui.Context, t *ui.Theme) {
+	icon, tip := iconChevronsLeft, "Collapse sidebar"
+	if a.sidebarCollapsed {
+		icon, tip = iconChevronsRight, "Expand sidebar"
+	}
+	b := ui.Button(c, "").Label(tip).Children(func() {
+		ui.Icon(c, icon).FontSize(14).TextColor(t.TextMuted)
+	})
+	if b.Clicked() {
+		a.setSidebar(!a.sidebarCollapsed)
+	}
+}
+
+// setSidebar folds the sidebar and remembers the fold across runs.
+func (a *app) setSidebar(collapsed bool) {
+	if a.sidebarCollapsed == collapsed {
+		return
+	}
+	a.sidebarCollapsed = collapsed
+	a.cfg.SidebarCollapsed = collapsed
+	if err := a.cfg.Save(); err != nil {
+		log.Printf("mcp-go: save sidebar state: %v", err)
+	}
 }
 
 // summary describes how many servers are ready, for the sidebar's foot.

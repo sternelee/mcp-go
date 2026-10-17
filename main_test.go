@@ -541,6 +541,34 @@ func TestSidebarNavigatesToTools(t *testing.T) {
 	}
 }
 
+func TestSidebarFoldsToARailAndBack(t *testing.T) {
+	a := newTestApp(t, stdioServer())
+	tt := ui.NewTester(a.view, 1080, 740)
+	if !tt.HasText("MCP Gateway") {
+		t.Fatalf("the unfolded sidebar shows the app's name; texts are %q", tt.Texts())
+	}
+	if err := tt.Click("Collapse sidebar"); err != nil {
+		t.Fatalf("fold the sidebar: %v", err)
+	}
+	tt.Frame()
+	if tt.HasText("MCP Gateway") {
+		t.Errorf("the folded sidebar still shows the app's name; texts are %q", tt.Texts())
+	}
+	if !a.cfg.SidebarCollapsed {
+		t.Errorf("the fold is not remembered in the configuration")
+	}
+	if err := tt.Click("Expand sidebar"); err != nil {
+		t.Fatalf("unfold the sidebar: %v", err)
+	}
+	tt.Frame()
+	if !tt.HasText("MCP Gateway") {
+		t.Errorf("the unfolded sidebar does not show the app's name; texts are %q", tt.Texts())
+	}
+	if a.cfg.SidebarCollapsed {
+		t.Errorf("the unfolded state is not remembered in the configuration")
+	}
+}
+
 func TestSaveFormStoresAServer(t *testing.T) {
 	a := newTestApp(t)
 	a.addServer()
