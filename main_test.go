@@ -1093,6 +1093,24 @@ func TestRoutesShowsAnEmptyStateWithoutAgents(t *testing.T) {
 
 func TestRoutesListsAConnectedAgent(t *testing.T) {
 	a := newTestApp(t)
+	connectAgent(t, a, "mcp-gateway")
+
+	tt := openRoutes(t, a)
+	if !tt.HasText("mcp-gateway") {
+		t.Fatalf("the connected agent is not listed; texts are %q", tt.Texts())
+	}
+	if !tt.HasText("1 connected") {
+		t.Errorf("the count is not shown; texts are %q", tt.Texts())
+	}
+}
+
+func openPanel(t *testing.T, a *app) *ui.Tester {
+	t.Helper()
+	return ui.NewTester(a.panelView, panelWidth, panelHeight)
+}
+
+func connectAgent(t *testing.T, a *app, name string) {
+	t.Helper()
 	c, err := client.NewInProcessClient(a.gw.Downstream())
 	if err != nil {
 		t.Fatalf("in-process client: %v", err)
@@ -1105,19 +1123,65 @@ func TestRoutesListsAConnectedAgent(t *testing.T) {
 		Request: mcp.Request{Method: string(mcp.MethodInitialize)},
 		Params: mcp.InitializeParams{
 			ProtocolVersion: mcp.LATEST_PROTOCOL_VERSION,
-			ClientInfo:      mcp.Implementation{Name: "mcp-gateway", Version: "test"},
+			ClientInfo:      mcp.Implementation{Name: name, Version: "test"},
 		},
 	}
 	if _, err := c.Initialize(context.Background(), req); err != nil {
 		t.Fatalf("initialize: %v", err)
 	}
+}
 
-	tt := openRoutes(t, a)
-	if !tt.HasText("mcp-gateway") {
-		t.Fatalf("the connected agent is not listed; texts are %q", tt.Texts())
+func TestPanelListsServersAndAgents(t *testing.T) {
+	a := newTestApp(t, stdioServer())
+	connectAgent(t, a, "mcp-gateway")
+
+	tt := openPanel(t, a)
+	if !tt.HasText("Filesystem") || !tt.HasText("no tools yet") {
+		t.Errorf("the Servers tab does not list the server; texts are %q", tt.Texts())
 	}
-	if !tt.HasText("1 connected") {
-		t.Errorf("the count is not shown; texts are %q", tt.Texts())
+	if err := tt.Click("Routes"); err != nil {
+		t.Fatalf("open the Routes tab: %v", err)
+	}
+	if !tt.HasText("mcp-gateway") || !tt.HasText("connected just now") {
+		t.Errorf("the Routes tab does not list the agent; texts are %q", tt.Texts())
+	}
+	if tt.HasText("no tools yet") {
+		t.Error("the Servers tab is still shown beside the Routes one")
+	}
+}
+
+func TestPanelShowsAnEmptyRoutesTab(t *testing.T) {
+	a := newTestApp(t, stdioServer())
+	tt := openPanel(t, a)
+	if err := tt.Click("Routes"); err != nil {
+		t.Fatalf("open the Routes tab: %v", err)
+	}
+	if !tt.HasText("No agents connected") {
+		t.Errorf("the empty routes note is missing; texts are %q", tt.Texts())
+	}
+}
+
+func TestPanelRowsOpenTheMainWindow(t *testing.T) {
+	a := newTestApp(t, stdioServer())
+	connectAgent(t, a, "mcp-gateway")
+	var opened []string
+	a.openMain = func(page string) { opened = append(opened, page) }
+
+	tt := openPanel(t, a)
+	if err := tt.Click("Filesystem"); err != nil {
+		t.Fatalf("click the server row: %v", err)
+	}
+	if len(opened) != 1 || opened[0] != "/servers" {
+		t.Errorf("the server row did not open the servers page; opened is %q", opened)
+	}
+	if err := tt.Click("Routes"); err != nil {
+		t.Fatalf("open the Routes tab: %v", err)
+	}
+	if err := tt.Click("mcp-gateway"); err != nil {
+		t.Fatalf("click the agent row: %v", err)
+	}
+	if len(opened) != 2 || opened[1] != "/routes" {
+		t.Errorf("the agent row did not open the routes page; opened is %q", opened)
 	}
 }
 

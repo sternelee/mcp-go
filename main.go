@@ -39,6 +39,18 @@ func main() {
 			// The window shows the interface MyGo draws, not a web page.
 			Content: ui.View(a.view),
 		})
+		// Closing hides the window; the menu bar icon brings it back, so the
+		// gateway stays reachable while its window is away.
+		a.win.OnClose(func(e *mygo.CloseEvent) {
+			e.PreventDefault()
+			a.win.Hide()
+		})
+		if mb, err := runMenubar(a); err != nil {
+			log.Printf("mcp-go: menu bar: %v", err)
+		} else {
+			a.onReload = mb.refresh
+			a.openMain = mb.open
+		}
 		// The gateway redraws the window from its own goroutines.
 		gw.SetOnChange(a.onChange)
 		go a.boot()

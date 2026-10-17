@@ -129,8 +129,11 @@ type app struct {
 	creds *config.CredentialStore
 	gw    *gateway.Gateway
 
-	win    *mygo.Window
-	router *ui.Router
+	win      *mygo.Window
+	router   *ui.Router
+	panel    *mygo.Window // the menu bar's open flyout, or nil
+	onReload func()       // runs on the main thread after every reload, for surfaces outside the window
+	openMain func(string) // brings the main window up on a page; the menu bar sets it
 
 	serversList ui.ListState
 	toolsList   ui.ListState
@@ -146,6 +149,7 @@ type app struct {
 
 	sel         int
 	toolSel     int
+	panelTab    int // which tab the menu bar's panel shows
 	port        float64
 	busy        string
 	pending     string // a toast waiting for the next frame
@@ -243,6 +247,9 @@ func (a *app) reload() {
 	a.authToken = a.gw.AuthToken()
 	a.authMode = inboundIndex(a.auth.Mode)
 	a.clampToolSelection()
+	if a.onReload != nil {
+		a.onReload()
+	}
 }
 
 // clampToolSelection keeps the tools selection on a row while there is one, so
@@ -269,6 +276,9 @@ func (a *app) post(fn func()) {
 		return
 	}
 	a.win.Update(fn)
+	if a.panel != nil {
+		a.panel.Update(func() {})
+	}
 }
 
 // live reports whether there is a window for background work to report to.
