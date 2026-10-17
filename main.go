@@ -39,9 +39,16 @@ func main() {
 			// The window shows the interface MyGo draws, not a web page.
 			Content: ui.View(a.view),
 		})
+		var quitting bool
+		// Quitting must still be able to close the hidden window; OnBeforeQuit
+		// runs before the windows close.
+		mygo.App.OnBeforeQuit(func(*mygo.QuitEvent) { quitting = true })
 		// Closing hides the window; the menu bar icon brings it back, so the
 		// gateway stays reachable while its window is away.
 		a.win.OnClose(func(e *mygo.CloseEvent) {
+			if quitting {
+				return
+			}
 			e.PreventDefault()
 			a.win.Hide()
 		})
