@@ -76,13 +76,18 @@ func (a *app) serversPage(c *ui.Context) {
 		a.serversList.Key = func(i int) any { return a.cfg.Servers[visible[i]].ID }
 		a.serversList.Label = func(i int) string { return a.cfg.Servers[visible[i]].Name }
 		a.serversList.Selected = &a.sel
-		list := surfaceShadow(t, ui.List(c.Key("servers"), &a.serversList, len(visible), func(i int) {
+		surfaceShadow(t, ui.List(c.Key("servers"), &a.serversList, len(visible), func(i int) {
 			a.serverRow(c, visible[i], i)
 		}).Grow(1).Border(1, t.Border).Radius(10).Padding(4))
-		// Opening a server is Enter or a double click on its row.
-		if list.Submitted() && selected >= 0 {
-			a.editServer(selected)
-		}
+		// Enter opens the chosen server as well, taken in the page's scope
+		// because the list's own submitted notice does not reach the page under
+		// a Router. It fires only while the keyboard is in the servers list, so
+		// Enter in the filter field is left alone.
+		c.OnShortcut(0, ui.KeyEnter, func() {
+			if selected >= 0 && a.serversList.FocusWithin(c) {
+				a.editServer(selected)
+			}
+		})
 
 		if selected >= 0 {
 			ui.Text(c, "Double-click a server to edit it. Its tools are named "+a.cfg.Servers[selected].Alias+"__…").
@@ -236,6 +241,15 @@ func (a *app) serverRow(c *ui.Context, i, row int) {
 		a.serverMenu(m, sc, i, view)
 	})
 	line.Transition(rowTransition)
+	// A click chooses the row, and a double click opens it. Both are taken here
+	// rather than left to the list's own submitted notice, which does not reach
+	// the page when the list is under a Router.
+	if line.DoubleClicked() {
+		a.editServer(i)
+	} else if line.Clicked() {
+		a.sel = row
+		a.serversList.Handle.Focus(c)
+	}
 
 	line.Children(func() {
 		// The list paints a chosen row in the accent color, so its secondary
