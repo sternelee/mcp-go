@@ -333,9 +333,22 @@ func (a *app) view(c *ui.Context) {
 		a.pending = ""
 	}
 	a.pageShortcuts(c)
+	// Where the window shows a material, the root stays clear so the
+	// sidebar can be glass; the pages keep a background of their own, so the
+	// desktop shows through the sidebar alone.
+	vibrant := c.Vibrancy()
+	if vibrant {
+		c.Root().Background(ui.Transparent)
+	}
+	bar := c.TitleBar()
 	ui.Row(c).Fill().AlignItems(ui.Stretch).Children(func() {
 		a.sidebar(c)
-		ui.Column(c).Grow(1).MinWidth(0).Children(func() {
+		content := ui.Column(c).Grow(1).MinWidth(0)
+		if vibrant {
+			content.Background(c.Theme().Background)
+		}
+		content.Children(func() {
+			a.titleBar(c, bar)
 			a.router.View(c, func(r *ui.Route) {
 				switch {
 				case r.Match("/market"):
@@ -382,13 +395,46 @@ const (
 	sidebarRail  = 64
 )
 
+// titleBarLights is the room macOS's traffic lights take from the top edge. Its
+// inset title bar is reported taller than the lights it centers, and the space
+// above them belongs to the sidebar, not to a band of empty glass.
+const titleBarLights = 40
+
+// titleBarBand is the strip the window controls sit in, or 0 without controls.
+func titleBarBand(bar ui.TitleBar) float32 {
+	if bar.Height <= 0 {
+		return 0
+	}
+	if bar.Right > 0 {
+		// Window draws its buttons down the right edge of the whole title bar.
+		return bar.Height
+	}
+	return min(bar.Height, titleBarLights)
+}
+
+// titleBar is the strip the window controls sit in. The page draws it, in the
+// colors of what lies under it, so it reads as the top of the page rather than
+// as a band of another shade above it. Empty, it drags the window.
+func (a *app) titleBar(c *ui.Context, bar ui.TitleBar) {
+	band := titleBarBand(bar)
+	if band <= 0 {
+		return
+	}
+	ui.Row(c).Height(band).Shrink(0).Padding(0, bar.Right, 0, bar.Left).DragWindow()
+}
+
 // sidebar lists the pages, and stays as the page changes. A little of the
 // window shows through it, and it folds to a rail of icons; the fold is
 // remembered across runs.
 func (a *app) sidebar(c *ui.Context) {
 	t := c.Theme()
 	page := a.router.Path()
-	col := ui.Column(c).Shrink(0).Background(t.Surface.Alpha(0.65))
+	col := ui.Column(c).Shrink(0)
+	if !c.Vibrancy() {
+		// With a material the sidebar is glass, and the material is its
+		// surface; without one it draws its own, a step above the page.
+		col.Background(t.Surface.Alpha(0.65))
+	}
 	target := float32(sidebarWidth)
 	if a.sidebarCollapsed {
 		target = sidebarRail
@@ -396,21 +442,13 @@ func (a *app) sidebar(c *ui.Context) {
 	// The fold eases between the two widths, so the page beside it does not
 	// jump.
 	col.Width(col.Animate("sidebar width", target, 180*time.Millisecond)).Children(func() {
-		head := ui.Row(c).Padding(18, 16, 14).Gap(10).AlignItems(ui.Center)
-		if a.sidebarCollapsed {
-			head = head.Justify(ui.Center)
+		band := titleBarBand(c.TitleBar())
+		if band > 0 {
+			// The window controls sit over the sidebar now that the title bar
+			// is the page's, and this strip is the room they take.
+			ui.Box(c).Height(band).Shrink(0).DragWindow()
 		}
-		head.Children(func() {
-			ui.Column(c).Width(30).Height(30).Center().Radius(8).Background(t.Accent).Children(func() {
-				ui.Icon(c, iconZap).FontSize(15).TextColor(t.AccentText)
-			})
-			if !a.sidebarCollapsed {
-				ui.Column(c).Gap(1).Children(func() {
-					ui.Text(c, "MCP Gateway").FontSize(13).Bold()
-					ui.Text(c, "v"+version).FontSize(10).TextColor(t.TextMuted)
-				})
-			}
-		})
+		a.sidebarHead(c, t)
 		if ui.Sidebar(c, &page, func() {
 			for i, p := range pages {
 				// The shortcut is what the visible name does not say, so it goes
@@ -434,27 +472,65 @@ func (a *app) sidebar(c *ui.Context) {
 		}
 		ui.Divider(c)
 		if a.sidebarCollapsed {
+			// The rail has no room for the word, so the dot carries it and
+			// the tooltip spells it out.
 			ui.Row(c).Padding(10, 0, 12).Justify(ui.Center).Children(func() {
-				a.collapseButton(c, t)
+				liveDot(c, a.gw.Serving(), "serving", "stopped")
 			})
 		} else {
 			ui.Row(c).Padding(10, 16, 12).Gap(8).AlignItems(ui.Center).Children(func() {
 				livePill(c, a.gw.Serving(), "serving", "stopped")
 				ui.Text(c, a.summary()).FontSize(11).TextColor(t.TextMuted).Grow(1)
-				a.collapseButton(c, t)
 			})
 		}
 	})
 }
 
-// collapseButton is the sidebar's fold toggle; its label is what tests click.
-func (a *app) collapseButton(c *ui.Context, t *ui.Theme) {
-	icon, tip := iconChevronsLeft, "Collapse sidebar"
-	if a.sidebarCollapsed {
-		icon, tip = iconChevronsRight, "Expand sidebar"
+// sidebarHead is the app's identity, with the fold toggle at its right, the
+// way a toolbar carries one. The toggle is the only way back out of a folded
+// rail, so it never leaves.
+func (a *app) sidebarHead(c *ui.Context, t *ui.Theme) {
+	brand := func() {
+		ui.Column(c).Width(30).Height(30).Center().Radius(8).Background(t.Accent).Children(func() {
+			ui.Icon(c, iconZap).FontSize(15).TextColor(t.AccentText)
+		})
 	}
-	b := ui.Button(c, "").Label(tip).Children(func() {
-		ui.Icon(c, icon).FontSize(14).TextColor(t.TextMuted)
+	if a.sidebarCollapsed {
+		// The rail is narrower than the mark and the toggle together, so
+		// they stack.
+		ui.Column(c).Padding(10, 0, 10).Gap(8).AlignItems(ui.Center).Children(func() {
+			brand()
+			a.collapseButton(c, t)
+		})
+		return
+	}
+	ui.Row(c).Padding(14, 14, 10).Gap(10).AlignItems(ui.Center).Children(func() {
+		brand()
+		// The name grows, so the toggle sits at the far right of the head.
+		ui.Column(c).Grow(1).Gap(1).Children(func() {
+			ui.Text(c, "MCP Gateway").FontSize(13).Bold()
+			ui.Text(c, "v"+version).FontSize(10).TextColor(t.TextMuted)
+		})
+		a.collapseButton(c, t)
+	})
+}
+
+// collapseButton is the sidebar's fold toggle, beside the app's mark: the
+// same window-with-its-sidebar mark either way, in a quiet square that lights
+// under the pointer. Its label is what tests click.
+func (a *app) collapseButton(c *ui.Context, t *ui.Theme) {
+	tip := "Collapse sidebar"
+	if a.sidebarCollapsed {
+		tip = "Expand sidebar"
+	}
+	b := ui.ButtonBase(c).Size(26, 22).Center().Radius(6).Label(tip).Tooltip(tip)
+	if b.Hovered() {
+		b.Background(t.SurfaceHover)
+	}
+	b.Children(func() {
+		// Lighter than secondary text, as the reference's mark is: the
+		// toggle is the only way in or out of the fold, so it should read.
+		ui.Icon(c, iconSidebar).Size(15, 12).TextColor(t.Text.Alpha(0.72))
 	})
 	if b.Clicked() {
 		a.setSidebar(!a.sidebarCollapsed)

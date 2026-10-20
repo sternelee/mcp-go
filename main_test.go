@@ -569,6 +569,71 @@ func TestSidebarFoldsToARailAndBack(t *testing.T) {
 	}
 }
 
+// The page draws the title bar now, so the window controls sit over it: the
+// strip keeps their room clear, and it is painted in the page's own color, so
+// the bar cannot read as a band of another shade above the page.
+func TestThePageDrawsItsOwnTitleBar(t *testing.T) {
+	a := newTestApp(t, stdioServer())
+	bar := ui.TitleBar{Height: 28, Left: 70}
+	tt := ui.NewTester(a.view, 1080, 740)
+	tt.SetDark(true)
+	tt.SetTitleBar(bar)
+	tt.Frame()
+
+	// Nothing of the sidebar may sit where the window controls are drawn.
+	for _, label := range []string{"MCP Gateway", "Collapse sidebar"} {
+		r, ok := tt.Find(label)
+		if !ok {
+			t.Fatalf("the sidebar is missing %q; texts are %q", label, tt.Texts())
+		}
+		if r.Y < bar.Height {
+			t.Errorf("%q is under the window controls: y=%.0f", label, r.Y)
+		}
+	}
+
+	// A pixel in the strip and one further down the page are the same color.
+	sub, ok := tt.Find("Upstream MCP servers whose tools this gateway serves as one.")
+	if !ok {
+		t.Fatalf("the page is missing; texts are %q", tt.Texts())
+	}
+	img := tt.Image()
+	if img == nil {
+		t.Fatal("the tester draws no image")
+	}
+	x := int(sub.X + sub.W/2)
+	strip := img.RGBAAt(x, int(bar.Height)/2)
+	page := img.RGBAAt(x, int(sub.Y+sub.H)+60)
+	if strip != page {
+		t.Errorf("the strip above the page is %v where the page is %v", strip, page)
+	}
+	// And the sidebar is still its own surface beside it.
+	if side := img.RGBAAt(40, int(bar.Height)/2); side == page {
+		t.Errorf("the strip runs the page's color over the sidebar too: %v", side)
+	}
+}
+
+// macOS reports an inset title bar taller than the traffic lights it centers, so
+// the band the sidebar leaves for them must stay the lights' size.
+func TestTheTitleBarKeepsOnlyTheLightsRoom(t *testing.T) {
+	a := newTestApp(t, stdioServer())
+	bar := ui.TitleBar{Height: 66, Left: 79}
+	tt := ui.NewTester(a.view, 1080, 740)
+	tt.SetDark(true)
+	tt.SetTitleBar(bar)
+	tt.Frame()
+
+	r, ok := tt.Find("MCP Gateway")
+	if !ok {
+		t.Fatalf("the sidebar is missing its name; texts are %q", tt.Texts())
+	}
+	if r.Y < titleBarLights {
+		t.Errorf("the sidebar head is under the traffic lights: y=%.0f", r.Y)
+	}
+	if r.Y > bar.Height {
+		t.Errorf("the head sits %.0f below the top, further than the lights take", r.Y)
+	}
+}
+
 func TestSaveFormStoresAServer(t *testing.T) {
 	a := newTestApp(t)
 	a.addServer()
