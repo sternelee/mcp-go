@@ -14,7 +14,7 @@ import (
 
 // settingsPage shows where the gateway listens and what it has been doing.
 func (a *app) settingsPage(c *ui.Context) {
-	ui.Column(c).Fill().Padding(20).Gap(14).Children(func() {
+	ui.Column(c).Fill().Padding(14, 20, 20).Gap(14).Children(func() {
 		pageHeader(c, "Settings", "Where the gateway listens, and what it has been doing.", func() {
 			if a.busy != "" {
 				ui.Spinner(c).Label(a.busy)

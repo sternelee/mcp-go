@@ -27,7 +27,7 @@ func (a *app) toolsPage(c *ui.Context) {
 	case a.toolSel < 0 || a.toolSel >= len(visible):
 		a.toolSel = 0
 	}
-	ui.Column(c).Fill().Padding(20).Gap(14).Children(func() {
+	ui.Column(c).Fill().Padding(14, 20, 20).Gap(14).Children(func() {
 		pageHeader(c, "Tools", "What clients of the gateway see, named after the server each tool comes from.",
 			func() {
 				if a.busy != "" {

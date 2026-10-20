@@ -606,9 +606,14 @@ func TestThePageDrawsItsOwnTitleBar(t *testing.T) {
 	if strip != page {
 		t.Errorf("the strip above the page is %v where the page is %v", strip, page)
 	}
-	// And the sidebar is still its own surface beside it.
-	if side := img.RGBAAt(40, int(bar.Height)/2); side == page {
-		t.Errorf("the strip runs the page's color over the sidebar too: %v", side)
+	// One strip and one color: the sidebar keeps its surface below it, not in
+	// it, so the window controls sit on a single shade whichever way the
+	// sidebar is folded.
+	if over := img.RGBAAt(40, int(bar.Height)/2); over != page {
+		t.Errorf("the strip changes shade over the sidebar: %v", over)
+	}
+	if below := img.RGBAAt(40, int(bar.Height)+120); below == page {
+		t.Errorf("the sidebar lost its own surface below the strip: %v", below)
 	}
 }
 

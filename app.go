@@ -341,32 +341,34 @@ func (a *app) view(c *ui.Context) {
 		c.Root().Background(ui.Transparent)
 	}
 	bar := c.TitleBar()
-	ui.Row(c).Fill().AlignItems(ui.Stretch).Children(func() {
-		a.sidebar(c)
-		content := ui.Column(c).Grow(1).MinWidth(0)
-		if vibrant {
-			content.Background(c.Theme().Background)
-		}
-		content.Children(func() {
-			a.titleBar(c, bar)
-			a.router.View(c, func(r *ui.Route) {
-				switch {
-				case r.Match("/market"):
-					r.Title("Market")
-					a.marketPage(c)
-				case r.Match("/routes"):
-					r.Title("Routes")
-					a.routesPage(c)
-				case r.Match("/tools"):
-					r.Title("Tools")
-					a.toolsPage(c)
-				case r.Match("/settings"):
-					r.Title("Settings")
-					a.settingsPage(c)
-				default:
-					r.Title("Servers")
-					a.serversPage(c)
-				}
+	ui.Column(c).Fill().Children(func() {
+		a.titleBar(c, bar)
+		ui.Row(c).Grow(1).AlignItems(ui.Stretch).Children(func() {
+			a.sidebar(c)
+			content := ui.Column(c).Grow(1).MinWidth(0)
+			if vibrant {
+				content.Background(c.Theme().Background)
+			}
+			content.Children(func() {
+				a.router.View(c, func(r *ui.Route) {
+					switch {
+					case r.Match("/market"):
+						r.Title("Market")
+						a.marketPage(c)
+					case r.Match("/routes"):
+						r.Title("Routes")
+						a.routesPage(c)
+					case r.Match("/tools"):
+						r.Title("Tools")
+						a.toolsPage(c)
+					case r.Match("/settings"):
+						r.Title("Settings")
+						a.settingsPage(c)
+					default:
+						r.Title("Servers")
+						a.serversPage(c)
+					}
+				})
 			})
 		})
 	})
@@ -396,9 +398,9 @@ const (
 )
 
 // titleBarLights is the room macOS's traffic lights take from the top edge. Its
-// inset title bar is reported taller than the lights it centers, and the space
-// above them belongs to the sidebar, not to a band of empty glass.
-const titleBarLights = 40
+// inset title bar is reported taller than the lights it centres, and the space
+// above them belongs to the page, not to a band of empty glass.
+const titleBarLights = 34
 
 // titleBarBand is the strip the window controls sit in, or 0 without controls.
 func titleBarBand(bar ui.TitleBar) float32 {
@@ -412,15 +414,16 @@ func titleBarBand(bar ui.TitleBar) float32 {
 	return min(bar.Height, titleBarLights)
 }
 
-// titleBar is the strip the window controls sit in. The page draws it, in the
-// colors of what lies under it, so it reads as the top of the page rather than
-// as a band of another shade above it. Empty, it drags the window.
+// titleBar is the strip the window controls sit in, drawn across the whole
+// window in the page's own colour: it reads as the top of the page rather than
+// as a band of another shade above it, and the controls sit on one surface
+// whether the sidebar is open or folded to its rail. Empty, it drags the window.
 func (a *app) titleBar(c *ui.Context, bar ui.TitleBar) {
 	band := titleBarBand(bar)
 	if band <= 0 {
 		return
 	}
-	ui.Row(c).Height(band).Shrink(0).Padding(0, bar.Right, 0, bar.Left).DragWindow()
+	ui.Row(c).Height(band).Shrink(0).Background(c.Theme().Background).DragWindow()
 }
 
 // sidebar lists the pages, and stays as the page changes. A little of the
@@ -442,12 +445,6 @@ func (a *app) sidebar(c *ui.Context) {
 	// The fold eases between the two widths, so the page beside it does not
 	// jump.
 	col.Width(col.Animate("sidebar width", target, 180*time.Millisecond)).Children(func() {
-		band := titleBarBand(c.TitleBar())
-		if band > 0 {
-			// The window controls sit over the sidebar now that the title bar
-			// is the page's, and this strip is the room they take.
-			ui.Box(c).Height(band).Shrink(0).DragWindow()
-		}
 		a.sidebarHead(c, t)
 		if ui.Sidebar(c, &page, func() {
 			for i, p := range pages {
