@@ -15,7 +15,7 @@ func (a *app) routesPage(c *ui.Context) {
 	t := c.Theme()
 	sessions := a.gw.Sessions()
 
-	ui.Column(c).Fill().Padding(14, 20, 20).Gap(14).Children(func() {
+	ui.Column(c).Fill().Padding(20).Gap(14).Children(func() {
 		pageHeader(c, "Routes", "Agents connected to the gateway, and how they use it.", func() {
 			ui.Text(c, fmt.Sprintf("%d connected", len(sessions))).FontSize(12).TextColor(t.TextMuted)
 		})

@@ -39,7 +39,7 @@ func (a *app) marketPage(c *ui.Context) {
 		a.marketSearch(false)
 	}
 
-	ui.Column(c).Fill().Padding(14, 20, 20).Gap(14).Children(func() {
+	ui.Column(c).Fill().Padding(20).Gap(14).Children(func() {
 		pageHeader(c, "Market", "Public servers from the official MCP registry, added in one step.", func() {
 			if m.loading {
 				ui.Spinner(c).Label("Searching…")

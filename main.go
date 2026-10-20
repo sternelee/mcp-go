@@ -41,10 +41,6 @@ func main() {
 			// what leaves it clear. Where no material shows, the sidebar
 			// draws a surface of its own.
 			Vibrancy: mygo.VibrancySidebar,
-			// The page draws the title bar, so the sidebar's glass runs to
-			// the top edge and the window controls sit over it.
-			TitleBarStyle:  mygo.TitleBarHiddenInset,
-			TitleBarHeight: 52,
 			// The window shows the interface MyGo draws, not a web page.
 			Content: ui.View(a.view),
 		})

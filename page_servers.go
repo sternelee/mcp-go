@@ -17,7 +17,7 @@ func (a *app) serversPage(c *ui.Context) {
 	visible := a.visibleServers()
 	a.clampSelection(len(visible))
 	selected := a.selectedIndex(visible)
-	ui.Column(c).Fill().Padding(14, 20, 20).Gap(14).Children(func() {
+	ui.Column(c).Fill().Padding(20).Gap(14).Children(func() {
 		pageHeader(c, "Servers", "Upstream MCP servers whose tools this gateway serves as one.", func() {
 			if a.busy != "" {
 				ui.Spinner(c).Label(a.busy)

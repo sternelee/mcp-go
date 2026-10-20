@@ -340,35 +340,31 @@ func (a *app) view(c *ui.Context) {
 	if vibrant {
 		c.Root().Background(ui.Transparent)
 	}
-	bar := c.TitleBar()
-	ui.Column(c).Fill().Children(func() {
-		a.titleBar(c, bar)
-		ui.Row(c).Grow(1).AlignItems(ui.Stretch).Children(func() {
-			a.sidebar(c)
-			content := ui.Column(c).Grow(1).MinWidth(0)
-			if vibrant {
-				content.Background(c.Theme().Background)
-			}
-			content.Children(func() {
-				a.router.View(c, func(r *ui.Route) {
-					switch {
-					case r.Match("/market"):
-						r.Title("Market")
-						a.marketPage(c)
-					case r.Match("/routes"):
-						r.Title("Routes")
-						a.routesPage(c)
-					case r.Match("/tools"):
-						r.Title("Tools")
-						a.toolsPage(c)
-					case r.Match("/settings"):
-						r.Title("Settings")
-						a.settingsPage(c)
-					default:
-						r.Title("Servers")
-						a.serversPage(c)
-					}
-				})
+	ui.Row(c).Fill().AlignItems(ui.Stretch).Children(func() {
+		a.sidebar(c)
+		content := ui.Column(c).Grow(1).MinWidth(0)
+		if vibrant {
+			content.Background(c.Theme().Background)
+		}
+		content.Children(func() {
+			a.router.View(c, func(r *ui.Route) {
+				switch {
+				case r.Match("/market"):
+					r.Title("Market")
+					a.marketPage(c)
+				case r.Match("/routes"):
+					r.Title("Routes")
+					a.routesPage(c)
+				case r.Match("/tools"):
+					r.Title("Tools")
+					a.toolsPage(c)
+				case r.Match("/settings"):
+					r.Title("Settings")
+					a.settingsPage(c)
+				default:
+					r.Title("Servers")
+					a.serversPage(c)
+				}
 			})
 		})
 	})
@@ -396,35 +392,6 @@ const (
 	sidebarWidth = 216
 	sidebarRail  = 64
 )
-
-// titleBarLights is the room macOS's traffic lights take from the top edge. Its
-// inset title bar is reported taller than the lights it centres, and the space
-// above them belongs to the page, not to a band of empty glass.
-const titleBarLights = 34
-
-// titleBarBand is the strip the window controls sit in, or 0 without controls.
-func titleBarBand(bar ui.TitleBar) float32 {
-	if bar.Height <= 0 {
-		return 0
-	}
-	if bar.Right > 0 {
-		// Window draws its buttons down the right edge of the whole title bar.
-		return bar.Height
-	}
-	return min(bar.Height, titleBarLights)
-}
-
-// titleBar is the strip the window controls sit in, drawn across the whole
-// window in the page's own colour: it reads as the top of the page rather than
-// as a band of another shade above it, and the controls sit on one surface
-// whether the sidebar is open or folded to its rail. Empty, it drags the window.
-func (a *app) titleBar(c *ui.Context, bar ui.TitleBar) {
-	band := titleBarBand(bar)
-	if band <= 0 {
-		return
-	}
-	ui.Row(c).Height(band).Shrink(0).Background(c.Theme().Background).DragWindow()
-}
 
 // sidebar lists the pages, and stays as the page changes. A little of the
 // window shows through it, and it folds to a rail of icons; the fold is
@@ -483,9 +450,10 @@ func (a *app) sidebar(c *ui.Context) {
 	})
 }
 
-// sidebarHead is the app's identity, with the fold toggle at its right, the
-// way a toolbar carries one. The toggle is the only way back out of a folded
-// rail, so it never leaves.
+// sidebarHead is the app's mark, with the fold toggle at its right, the way a
+// toolbar carries one. The window's own title bar names the app, so the head
+// stays the mark alone. The toggle is the only way back out of a folded rail,
+// so it never leaves.
 func (a *app) sidebarHead(c *ui.Context, t *ui.Theme) {
 	brand := func() {
 		ui.Column(c).Width(30).Height(30).Center().Radius(8).Background(t.Accent).Children(func() {
@@ -503,11 +471,10 @@ func (a *app) sidebarHead(c *ui.Context, t *ui.Theme) {
 	}
 	ui.Row(c).Padding(14, 14, 10).Gap(10).AlignItems(ui.Center).Children(func() {
 		brand()
-		// The name grows, so the toggle sits at the far right of the head.
-		ui.Column(c).Grow(1).Gap(1).Children(func() {
-			ui.Text(c, "MCP Gateway").FontSize(13).Bold()
-			ui.Text(c, "v"+version).FontSize(10).TextColor(t.TextMuted)
-		})
+		// The window's title bar names the app, so the head carries the build
+		// it runs instead, beside the mark.
+		ui.Text(c, "v"+version).FontSize(11).TextColor(t.TextMuted)
+		ui.Spacer(c)
 		a.collapseButton(c, t)
 	})
 }

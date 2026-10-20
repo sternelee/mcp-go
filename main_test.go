@@ -544,15 +544,17 @@ func TestSidebarNavigatesToTools(t *testing.T) {
 func TestSidebarFoldsToARailAndBack(t *testing.T) {
 	a := newTestApp(t, stdioServer())
 	tt := ui.NewTester(a.view, 1080, 740)
-	if !tt.HasText("MCP Gateway") {
-		t.Fatalf("the unfolded sidebar shows the app's name; texts are %q", tt.Texts())
+	// The open sidebar names its pages; the rail shows their icons and keeps
+	// the names in the tooltips.
+	if !tt.HasText("Settings") {
+		t.Fatalf("the unfolded sidebar does not name its pages; texts are %q", tt.Texts())
 	}
 	if err := tt.Click("Collapse sidebar"); err != nil {
 		t.Fatalf("fold the sidebar: %v", err)
 	}
 	tt.Frame()
-	if tt.HasText("MCP Gateway") {
-		t.Errorf("the folded sidebar still shows the app's name; texts are %q", tt.Texts())
+	if tt.HasText("Settings") {
+		t.Errorf("the folded sidebar still names its pages; texts are %q", tt.Texts())
 	}
 	if !a.cfg.SidebarCollapsed {
 		t.Errorf("the fold is not remembered in the configuration")
@@ -561,8 +563,8 @@ func TestSidebarFoldsToARailAndBack(t *testing.T) {
 		t.Fatalf("unfold the sidebar: %v", err)
 	}
 	tt.Frame()
-	if !tt.HasText("MCP Gateway") {
-		t.Errorf("the unfolded sidebar does not show the app's name; texts are %q", tt.Texts())
+	if !tt.HasText("Settings") {
+		t.Errorf("the unfolded sidebar does not name its pages; texts are %q", tt.Texts())
 	}
 	if a.cfg.SidebarCollapsed {
 		t.Errorf("the unfolded state is not remembered in the configuration")
@@ -572,72 +574,6 @@ func TestSidebarFoldsToARailAndBack(t *testing.T) {
 // The page draws the title bar now, so the window controls sit over it: the
 // strip keeps their room clear, and it is painted in the page's own color, so
 // the bar cannot read as a band of another shade above the page.
-func TestThePageDrawsItsOwnTitleBar(t *testing.T) {
-	a := newTestApp(t, stdioServer())
-	bar := ui.TitleBar{Height: 28, Left: 70}
-	tt := ui.NewTester(a.view, 1080, 740)
-	tt.SetDark(true)
-	tt.SetTitleBar(bar)
-	tt.Frame()
-
-	// Nothing of the sidebar may sit where the window controls are drawn.
-	for _, label := range []string{"MCP Gateway", "Collapse sidebar"} {
-		r, ok := tt.Find(label)
-		if !ok {
-			t.Fatalf("the sidebar is missing %q; texts are %q", label, tt.Texts())
-		}
-		if r.Y < bar.Height {
-			t.Errorf("%q is under the window controls: y=%.0f", label, r.Y)
-		}
-	}
-
-	// A pixel in the strip and one further down the page are the same color.
-	sub, ok := tt.Find("Upstream MCP servers whose tools this gateway serves as one.")
-	if !ok {
-		t.Fatalf("the page is missing; texts are %q", tt.Texts())
-	}
-	img := tt.Image()
-	if img == nil {
-		t.Fatal("the tester draws no image")
-	}
-	x := int(sub.X + sub.W/2)
-	strip := img.RGBAAt(x, int(bar.Height)/2)
-	page := img.RGBAAt(x, int(sub.Y+sub.H)+60)
-	if strip != page {
-		t.Errorf("the strip above the page is %v where the page is %v", strip, page)
-	}
-	// One strip and one color: the sidebar keeps its surface below it, not in
-	// it, so the window controls sit on a single shade whichever way the
-	// sidebar is folded.
-	if over := img.RGBAAt(40, int(bar.Height)/2); over != page {
-		t.Errorf("the strip changes shade over the sidebar: %v", over)
-	}
-	if below := img.RGBAAt(40, int(bar.Height)+120); below == page {
-		t.Errorf("the sidebar lost its own surface below the strip: %v", below)
-	}
-}
-
-// macOS reports an inset title bar taller than the traffic lights it centers, so
-// the band the sidebar leaves for them must stay the lights' size.
-func TestTheTitleBarKeepsOnlyTheLightsRoom(t *testing.T) {
-	a := newTestApp(t, stdioServer())
-	bar := ui.TitleBar{Height: 66, Left: 79}
-	tt := ui.NewTester(a.view, 1080, 740)
-	tt.SetDark(true)
-	tt.SetTitleBar(bar)
-	tt.Frame()
-
-	r, ok := tt.Find("MCP Gateway")
-	if !ok {
-		t.Fatalf("the sidebar is missing its name; texts are %q", tt.Texts())
-	}
-	if r.Y < titleBarLights {
-		t.Errorf("the sidebar head is under the traffic lights: y=%.0f", r.Y)
-	}
-	if r.Y > bar.Height {
-		t.Errorf("the head sits %.0f below the top, further than the lights take", r.Y)
-	}
-}
 
 func TestSaveFormStoresAServer(t *testing.T) {
 	a := newTestApp(t)
