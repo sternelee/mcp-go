@@ -144,10 +144,18 @@ func downstream(t *testing.T, g *Gateway) *client.Client {
 	if err := c.Start(ctx); err != nil {
 		t.Fatalf("start: %v", err)
 	}
-	if _, err := c.Initialize(ctx, initializeRequest("test")); err != nil {
+	if _, err := c.Initialize(ctx, initializeAs("test-agent", "test")); err != nil {
 		t.Fatalf("initialize: %v", err)
 	}
 	return c
+}
+
+// initializeAs is a handshake from an agent that names itself, so tests can
+// read that name back from the gateway instead of the one it sends upstream.
+func initializeAs(name, version string) mcp.InitializeRequest {
+	req := initializeRequest(version)
+	req.Params.ClientInfo = mcp.Implementation{Name: name, Version: version}
+	return req
 }
 
 // listNames is the set of tool names a client of the gateway sees.
@@ -575,7 +583,7 @@ func TestGatewayAnswersMCPOverStreamableHTTP(t *testing.T) {
 	if response.StatusCode != http.StatusOK {
 		t.Fatalf("initialize answered %d: %s", response.StatusCode, body)
 	}
-	if !strings.Contains(string(body), "mcp-gateway") {
+	if !strings.Contains(string(body), "mcp-go") {
 		t.Errorf("the server does not introduce itself: %s", body)
 	}
 
@@ -678,7 +686,7 @@ func TestGatewayFollowsConnectedAgents(t *testing.T) {
 		t.Fatalf("there are %d sessions, want 1", len(sessions))
 	}
 	session := sessions[0]
-	if session.Client != "mcp-gateway" {
+	if session.Client != "test-agent" {
 		t.Errorf("the agent is %q, want the name it initialized with", session.Client)
 	}
 	if session.Version != "test" {
@@ -740,7 +748,7 @@ func TestGatewayNamesAConnectedAgentInItsActivity(t *testing.T) {
 
 	var note string
 	for _, event := range g.Events() {
-		if strings.Contains(event.Text, "mcp-gateway") {
+		if strings.Contains(event.Text, "test-agent") {
 			note = event.Text
 			break
 		}

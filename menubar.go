@@ -36,7 +36,7 @@ func runMenubar(a *app) (*menubar, error) {
 	tray, err := mygo.NewTray(mygo.TrayOptions{
 		Icon:           trayIcon(runtime.GOOS == "darwin"),
 		IconIsTemplate: runtime.GOOS == "darwin",
-		ToolTip:        "MCP Gateway",
+		ToolTip:        "MCP Go",
 	})
 	if err != nil {
 		return nil, err
@@ -44,7 +44,7 @@ func runMenubar(a *app) (*menubar, error) {
 	m := &menubar{a: a, tray: tray}
 
 	menu := mygo.NewMenu([]*mygo.MenuItem{
-		{Label: "Open MCP Gateway", Click: func(*mygo.MenuItem, *mygo.Window) { m.open("/servers") }},
+		{Label: "Open MCP Go", Click: func(*mygo.MenuItem, *mygo.Window) { m.open("/servers") }},
 		{Label: "Show Routes", Click: func(*mygo.MenuItem, *mygo.Window) { m.open("/routes") }},
 		mygo.Separator(),
 		{Role: mygo.RoleQuit},
@@ -104,7 +104,7 @@ func (m *menubar) open(page string) {
 // refresh updates the tray title and tooltip from the state the app has just
 // reloaded. It runs on the main thread.
 func (m *menubar) refresh() {
-	title, tip := "", "MCP Gateway · "+m.a.summary()
+	title, tip := "", "MCP Go · "+m.a.summary()
 	if agents := len(m.a.gw.Sessions()); agents > 0 {
 		title = fmt.Sprint(agents)
 		tip += fmt.Sprintf(" · %d agent%s connected", agents, plural(agents))
@@ -142,7 +142,7 @@ func (a *app) panelView(c *ui.Context) {
 	box.Children(func() {
 		ui.Row(c).Padding(14, 16, 10).Gap(10).AlignItems(ui.Center).Children(func() {
 			ui.Icon(c, iconZap).FontSize(15).TextColor(t.Accent)
-			ui.Text(c, "MCP Gateway").Bold().Grow(1)
+			ui.Text(c, "MCP Go").Bold().Grow(1)
 			livePill(c, a.gw.Serving(), "serving", "stopped")
 			page := "/servers"
 			if a.panelTab == 1 {

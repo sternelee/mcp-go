@@ -30,7 +30,7 @@ func (e *NeedsAuthError) Unwrap() error { return e.Err }
 
 // clientName is what the gateway calls itself when registering with an
 // authorization server.
-const clientName = "MCP Gateway"
+const clientName = "MCP Go"
 
 // Upstream is one connected MCP server the gateway proxies.
 type Upstream struct {
@@ -208,7 +208,7 @@ func initializeRequest(version string) mcp.InitializeRequest {
 		Request: mcp.Request{Method: string(mcp.MethodInitialize)},
 		Params: mcp.InitializeParams{
 			ProtocolVersion: mcp.LATEST_PROTOCOL_VERSION,
-			ClientInfo:      mcp.Implementation{Name: "mcp-gateway", Version: version},
+			ClientInfo:      mcp.Implementation{Name: "mcp-go", Version: version},
 		},
 	}
 }

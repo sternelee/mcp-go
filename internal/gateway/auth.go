@@ -204,7 +204,7 @@ func (g *Gateway) handleProtectedResource(w http.ResponseWriter, r *http.Request
 
 	metadata := server.ProtectedResourceMetadataConfig{
 		Resource:               g.resourceURL(resourcePath),
-		ResourceName:           "MCP Gateway",
+		ResourceName:           "MCP Go",
 		BearerMethodsSupported: []string{"header"},
 		ScopesSupported:        []string{authScope},
 	}
@@ -358,7 +358,7 @@ func (g *Gateway) consentPage(w http.ResponseWriter, r *http.Request, clientID, 
 <html lang="en">
 <head><meta charset="utf-8"><title>Authorize</title></head>
 <body style="font:16px -apple-system,system-ui,sans-serif;margin:4rem auto;max-width:34rem;color:#111">
-<h1 style="font-size:1.25rem">Allow this client to use MCP Gateway?</h1>
+<h1 style="font-size:1.25rem">Allow this client to use MCP Go?</h1>
 <p>"<strong>%s</strong>" wants to call the tools this gateway serves, and will be sent back to
 <code>%s</code>.</p>
 <form method="post" action="/oauth/authorize">

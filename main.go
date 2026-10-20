@@ -30,7 +30,7 @@ func main() {
 
 	mygo.App.WhenReady(func() {
 		a.win = mygo.NewWindow(mygo.WindowOptions{
-			Title:     "MCP Gateway",
+			Title:     "MCP Go",
 			Width:     1080,
 			Height:    740,
 			MinWidth:  820,

@@ -181,7 +181,7 @@ func (g *Gateway) handleOAuthCallback(w http.ResponseWriter, r *http.Request) {
 
 	if p == nil {
 		g.writeCallbackPage(w, false, "Sign-in failed",
-			"This sign-in has expired, or was already completed. Start it again from MCP Gateway.")
+			"This sign-in has expired, or was already completed. Start it again from MCP Go.")
 		return
 	}
 
@@ -203,7 +203,7 @@ func (g *Gateway) handleOAuthCallback(w http.ResponseWriter, r *http.Request) {
 	g.markSignedIn(p.serverID, true)
 	g.changed()
 	g.writeCallbackPage(w, true, "Signed in",
-		"You can close this tab and return to MCP Gateway.")
+		"You can close this tab and return to MCP Go.")
 
 	// Connect the server now that it has a token.
 	serverID := p.serverID

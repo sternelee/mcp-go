@@ -124,7 +124,7 @@ func New(cfg *config.Config, creds *config.CredentialStore, version string) *Gat
 		pending:   map[string]*pendingAuth{},
 		sessions:  map[string]*sessionRecord{},
 		tokens:    newIssuedTokens(),
-		srv: server.NewMCPServer("mcp-gateway", version,
+		srv: server.NewMCPServer("mcp-go", version,
 			server.WithInstructions("A gateway that aggregates the tools of several MCP servers. Tool names are prefixed with the server they come from."),
 			server.WithToolCapabilities(true), // publish tools/list_changed as servers come and go
 			server.WithRecovery(),
