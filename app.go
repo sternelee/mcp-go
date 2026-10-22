@@ -389,8 +389,9 @@ func (a *app) pageShortcuts(c *ui.Context) {
 
 // The sidebar folds between its full width and an icon-only rail.
 const (
-	sidebarWidth = 216
-	sidebarRail  = 64
+	sidebarWidth    = 216
+	sidebarRail     = 64
+	sidebarTileSize = 32
 )
 
 // sidebar lists the pages, and stays as the page changes. A little of the
@@ -425,7 +426,9 @@ func (a *app) sidebar(c *ui.Context) {
 					// In the rail the item is a tile around its icon; the name
 					// lives only in the tooltip.
 					ui.Row(c).Justify(ui.Center).Children(func() {
-						ui.SidebarItem(c, p.path, p.icon, "").Tooltip(tip)
+						ui.SidebarItem(c, p.path, p.icon, "").
+							Size(sidebarTileSize, sidebarTileSize).Padding(8).Gap(0).
+							Label(tip).Tooltip(tip)
 					})
 				} else {
 					ui.SidebarItem(c, p.path, p.icon, p.title).Tooltip(tip)
@@ -450,24 +453,19 @@ func (a *app) sidebar(c *ui.Context) {
 	})
 }
 
-// sidebarHead is the app's mark, with the fold toggle at its right, the way a
-// toolbar carries one. The window's own title bar names the app, so the head
-// stays the mark alone. The toggle is the only way back out of a folded rail,
-// so it never leaves.
+// sidebarHead shows the app's mark and fold toggle when expanded. The folded
+// rail keeps only the toggle, centered on the same line as the page icons.
 func (a *app) sidebarHead(c *ui.Context, t *ui.Theme) {
-	brand := func() {
-		ui.Column(c).Width(30).Height(30).Center().Radius(8).Background(t.Accent).Children(func() {
-			ui.Icon(c, iconZap).FontSize(15).TextColor(t.AccentText)
-		})
-	}
 	if a.sidebarCollapsed {
-		// The rail is narrower than the mark and the toggle together, so
-		// they stack.
-		ui.Column(c).Padding(10, 0, 10).Gap(8).AlignItems(ui.Center).Children(func() {
-			brand()
+		ui.Row(c).Padding(10, 0).Justify(ui.Center).Children(func() {
 			a.collapseButton(c, t)
 		})
 		return
+	}
+	brand := func() {
+		ui.Column(c).Width(30).Height(30).Center().Radius(8).Background(t.Accent).Label("MCP Go logo").Children(func() {
+			ui.Icon(c, iconZap).FontSize(15).TextColor(t.AccentText)
+		})
 	}
 	ui.Row(c).Padding(14, 14, 10).Gap(10).AlignItems(ui.Center).Children(func() {
 		brand()
@@ -488,6 +486,9 @@ func (a *app) collapseButton(c *ui.Context, t *ui.Theme) {
 		tip = "Expand sidebar"
 	}
 	b := ui.ButtonBase(c).Size(26, 22).Center().Radius(6).Label(tip).Tooltip(tip)
+	if a.sidebarCollapsed {
+		b.Size(sidebarTileSize, sidebarTileSize)
+	}
 	if b.Hovered() {
 		b.Background(t.SurfaceHover)
 	}

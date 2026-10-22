@@ -553,7 +553,7 @@ func TestSidebarFoldsToARailAndBack(t *testing.T) {
 		t.Fatalf("fold the sidebar: %v", err)
 	}
 	tt.Frame()
-	if tt.HasText("Settings") {
+	if _, ok := tt.Find("Settings"); ok {
 		t.Errorf("the folded sidebar still names its pages; texts are %q", tt.Texts())
 	}
 	if !a.cfg.SidebarCollapsed {
@@ -568,6 +568,55 @@ func TestSidebarFoldsToARailAndBack(t *testing.T) {
 	}
 	if a.cfg.SidebarCollapsed {
 		t.Errorf("the unfolded state is not remembered in the configuration")
+	}
+}
+
+func TestCollapsedSidebarHidesLogoAndAlignsControls(t *testing.T) {
+	for _, width := range []int{820, 1080} {
+		t.Run(fmt.Sprint(width), func(t *testing.T) {
+			a := newTestApp(t)
+			tt := ui.NewTester(a.view, width, 740)
+			tt.SetPreferences(ui.Preferences{TextScale: 1, ReduceMotion: true})
+			for cycle := 0; cycle < 2; cycle++ {
+				if _, ok := tt.Find("MCP Go logo"); !ok {
+					t.Fatal("the expanded sidebar lost its logo")
+				}
+				if err := tt.Click("Collapse sidebar"); err != nil {
+					t.Fatal(err)
+				}
+				tt.Frame()
+				if _, ok := tt.Find("MCP Go logo"); ok {
+					t.Error("the collapsed sidebar still shows its logo")
+				}
+				toggle, ok := tt.Find("Expand sidebar")
+				if !ok {
+					t.Fatal("the expand button is missing")
+				}
+				if toggle.X+toggle.W/2 != sidebarRail/2 {
+					t.Errorf("the toggle is not centered in the rail: %+v", toggle)
+				}
+				for i, p := range pages {
+					item, ok := tt.Find(p.title + " (" + pageShortcutLabel(i) + ")")
+					if !ok {
+						t.Fatalf("the collapsed %s item is missing", p.title)
+					}
+					if item.X+item.W/2 != toggle.X+toggle.W/2 || item.W != toggle.W || item.H != toggle.H {
+						t.Errorf("%s is not aligned with the toggle: item=%+v, toggle=%+v", p.title, item, toggle)
+					}
+				}
+				if err := tt.Click("Tools (" + pageShortcutLabel(3) + ")"); err != nil {
+					t.Fatal(err)
+				}
+				tt.Frame()
+				if a.router.Path() != "/tools" {
+					t.Error("icon-only navigation did not open Tools")
+				}
+				if err := tt.Click("Expand sidebar"); err != nil {
+					t.Fatal(err)
+				}
+				tt.Frame()
+			}
+		})
 	}
 }
 
