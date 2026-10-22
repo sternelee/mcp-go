@@ -7,9 +7,11 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/mark3labs/mcp-go/client/transport"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 
@@ -48,7 +50,7 @@ func newAuthServer(t *testing.T) *authServer {
 	// RFC 9728 protected resource metadata, naming itself as the resource.
 	mux.HandleFunc("/.well-known/oauth-protected-resource", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, map[string]any{
-			"resource":              base(),
+			"resource":              base() + "/mcp",
 			"authorization_servers": []string{base()},
 		})
 	})
@@ -281,6 +283,136 @@ func TestBeginAuthRejectsAServerWithoutOAuth(t *testing.T) {
 	g := newTestGateway(t, sc)
 	if _, err := g.BeginAuth(context.Background(), sc.ID); err == nil {
 		t.Error("a stdio server should not be able to begin an OAuth flow")
+	}
+}
+
+func TestBeginAuthUsesAdvertisedResourceMetadata(t *testing.T) {
+	for _, kind := range []config.Transport{config.TransportHTTP, config.TransportSSE} {
+		for _, configured := range []bool{false, true} {
+			name := string(kind) + "/detected"
+			if configured {
+				name = string(kind) + "/configured"
+			}
+			t.Run(name, func(t *testing.T) {
+				var base string
+				var challenges, registrations, guessedRegistrations atomic.Int32
+				as := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					switch r.URL.Path {
+					case "/api/mcp":
+						if r.Header.Get("X-Tenant") != "example" {
+							http.Error(w, "missing tenant header", http.StatusBadRequest)
+							return
+						}
+						challenges.Add(1)
+						w.Header().Set("WWW-Authenticate",
+							`Bearer resource_metadata="`+base+`/.well-known/oauth-protected-resource"`)
+						w.WriteHeader(http.StatusUnauthorized)
+					case "/.well-known/oauth-protected-resource":
+						writeJSON(w, map[string]any{
+							"resource":              base + "/api/mcp",
+							"authorization_servers": []string{base},
+						})
+					case "/.well-known/oauth-authorization-server":
+						writeJSON(w, map[string]any{
+							"issuer":                                base,
+							"authorization_endpoint":                base + "/oauth/authorize",
+							"token_endpoint":                        base + "/oauth/token",
+							"registration_endpoint":                 base + "/oauth/register",
+							"token_endpoint_auth_methods_supported": []string{"none"},
+						})
+					case "/oauth/register":
+						registrations.Add(1)
+						w.WriteHeader(http.StatusCreated)
+						writeJSON(w, map[string]any{
+							"client_id":                  "public-client",
+							"token_endpoint_auth_method": "none",
+						})
+					case "/register":
+						guessedRegistrations.Add(1)
+						w.Header().Set("Content-Type", "text/html")
+						w.Write([]byte("<!doctype html><title>Not an OAuth endpoint</title>"))
+					default:
+						http.NotFound(w, r)
+					}
+				}))
+				defer as.Close()
+				base = as.URL
+				sc := config.ServerConfig{
+					ID: "s1", Name: "Nested", Alias: "nested",
+					Transport: kind, URL: base + "/api/mcp",
+					OAuth: configured, Enabled: true,
+					Headers: map[string]string{"X-Tenant": "example"},
+				}
+				g := newTestGateway(t, sc)
+				startServing(t, g)
+
+				authURL, err := g.BeginAuth(context.Background(), sc.ID)
+				if err != nil {
+					t.Fatalf("begin auth: %v", err)
+				}
+				parsed, err := url.Parse(authURL)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if parsed.Path != "/oauth/authorize" || parsed.Query().Get("client_id") != "public-client" {
+					t.Errorf("authorization did not use discovered endpoints: %s", authURL)
+				}
+				if got := parsed.Query().Get("resource"); got != sc.URL {
+					t.Errorf("resource = %q, want %q", got, sc.URL)
+				}
+				if challenges.Load() == 0 || registrations.Load() != 1 || guessedRegistrations.Load() != 0 {
+					t.Errorf("challenges=%d, registrations=%d, guessed registrations=%d",
+						challenges.Load(), registrations.Load(), guessedRegistrations.Load())
+				}
+			})
+		}
+	}
+}
+
+func TestDiscoverAuthChallengeDoesNotTrustAnotherOrigin(t *testing.T) {
+	for _, redirect := range []bool{false, true} {
+		name := "metadata"
+		if redirect {
+			name = "redirect"
+		}
+		t.Run(name, func(t *testing.T) {
+			var foreignRequests atomic.Int32
+			foreign := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				foreignRequests.Add(1)
+				http.Error(w, "must not be reached", http.StatusInternalServerError)
+			}))
+			defer foreign.Close()
+			trusted := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path != "/api/mcp" {
+					http.NotFound(w, r)
+					return
+				}
+				if redirect {
+					http.Redirect(w, r, foreign.URL, http.StatusFound)
+					return
+				}
+				w.Header().Set("WWW-Authenticate",
+					`Bearer resource_metadata="`+foreign.URL+`/metadata"`)
+				w.WriteHeader(http.StatusUnauthorized)
+			}))
+			defer trusted.Close()
+			sc := config.ServerConfig{URL: trusted.URL + "/api/mcp"}
+			handler := transport.NewOAuthHandler(transport.OAuthConfig{})
+			handler.SetBaseURL(sc.URL)
+			if err := discoverAuthChallenge(context.Background(), sc, handler); err != nil {
+				t.Fatal(err)
+			}
+			metadata, err := handler.GetServerMetadata(context.Background())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if metadata.Issuer != trusted.URL {
+				t.Errorf("discovery left the trusted origin: %q", metadata.Issuer)
+			}
+			if foreignRequests.Load() != 0 {
+				t.Errorf("sent %d requests to another origin", foreignRequests.Load())
+			}
+		})
 	}
 }
 

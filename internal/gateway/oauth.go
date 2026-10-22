@@ -53,10 +53,9 @@ func (g *Gateway) BeginAuth(ctx context.Context, serverID string) (string, error
 	ctx, cancel := context.WithTimeout(ctx, beginAuthTimeout)
 	defer cancel()
 
-	// A connection attempt is what makes the server state its authorization
-	// requirements, and hands back the handler already configured for them.
-	// OAuth is forced here, since the discovery that follows is what produces
-	// the handler even for a server the configuration never marked as OAuth.
+	// The connection attempt supplies an OAuth handler even for a server the
+	// configuration never marked as OAuth. With no token, the transport may
+	// stop before making a request, so discovery still needs its 401 challenge.
 	up, err := connect(ctx, sc, connectOptions{
 		creds:       g.creds,
 		redirectURI: g.redirectURI(),
@@ -83,14 +82,22 @@ func (g *Gateway) BeginAuth(ctx context.Context, serverID string) (string, error
 	if handler == nil {
 		return "", errors.New("the server requires authorization but sent no OAuth details")
 	}
+	// With no saved token the handler has never seen resource_metadata. Probe
+	// before metadata discovery can fall back to guessed OAuth endpoints.
+	var challenge *transport.OAuthAuthorizationRequiredError
+	if !errors.As(needs.Err, &challenge) || challenge.ResourceMetadataURL == "" {
+		if err := discoverAuthChallenge(ctx, sc, handler); err != nil {
+			return "", fmt.Errorf("discover authorization for %s: %w", sc.Name, err)
+		}
+	}
 
 	// Register the gateway with the authorization server when it asks clients
 	// to. A pre-registered client ID, which the user can supply, skips this.
 	if handler.GetClientID() == "" {
 		if err := handler.RegisterClient(ctx, clientName); err != nil {
 			return "", fmt.Errorf(
-				"%s needs a client registration its authorization server does not offer; "+
-					"enter a client ID and secret for it and try again: %w", sc.Name, err)
+				"could not register %s with its OAuth authorization server: %w; "+
+					"if manual registration is required, enter a client ID (and a secret only if required)", sc.Name, err)
 		}
 	}
 	if err := g.saveClient(sc.ID, handler); err != nil {
@@ -124,6 +131,41 @@ func (g *Gateway) BeginAuth(ctx context.Context, serverID string) (string, error
 	g.note(sc.ID, sc.Name+": waiting for sign-in in the browser", false)
 	g.changed()
 	return authURL, nil
+}
+
+// discoverAuthChallenge asks the upstream for its unauthenticated challenge.
+// A GET discovers both HTTP and SSE resources without invoking an MCP tool.
+// Do not follow redirects; only the configured resource can advertise metadata,
+// and the handler still applies its own same-origin and resource-binding checks.
+func discoverAuthChallenge(ctx context.Context, sc config.ServerConfig, handler *transport.OAuthHandler) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, sc.URL, nil)
+	if err != nil {
+		return err
+	}
+	for name, value := range sc.Headers {
+		req.Header.Set(name, value)
+	}
+	req.Header.Set("Accept", "application/json, text/event-stream")
+	httpClient := &http.Client{
+		Timeout: 30 * time.Second,
+		CheckRedirect: func(*http.Request, []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		cancel()
+		resp.Body.Close()
+	}()
+	if resp.StatusCode == http.StatusUnauthorized {
+		handler.HandleUnauthorizedResponse(resp)
+	}
+	return nil
 }
 
 // saveClient keeps what the authorization server handed the gateway, so a
